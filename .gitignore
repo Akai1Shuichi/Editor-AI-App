@@ -1,0 +1,63 @@
+# ==========================================
+# Python Virtual Environments
+# ==========================================
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ==========================================
+# Byte-compiled / Cache files
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# Sensitive Data / Environment Variables
+# ==========================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ==========================================
+# Media Outputs & Temporary Files
+# ==========================================
+downloads/*
+!downloads/.gitkeep
+clean/
+*_cleaned.png
+*.mp3
+*.wav
+*.srt
+*.tmp
+
+# ==========================================
+# Logs & System Files
+# ==========================================
+*.log
+logs/
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ==========================================
+# IDE & Editor Configurations
+# ==========================================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+documents/vibi

@@ -1,0 +1,294 @@
+import re
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, List, Dict, Any, Tuple, Callable
+import requests
+
+from app import config
+
+class VibiAPIError(Exception):
+    """Lỗi phát sinh khi gọi Vibi API."""
+    pass
+
+class VibiClient:
+    """Client tương tác với Vibi API (https://api.vibi.pro) cho ElevenLabs TTS."""
+
+    def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
+        self.api_key = api_key or config.VIBI_API_KEY
+        self.base_url = (base_url or config.VIBI_API_BASE or "https://api.vibi.pro").rstrip("/")
+        self.session = requests.Session()
+
+    def set_api_key(self, key: str):
+        """Cập nhật API key cho client."""
+        self.api_key = key.strip()
+
+    def is_configured(self) -> bool:
+        """Kiểm tra xem API key đã được cấu hình chưa."""
+        return bool(self.api_key and len(self.api_key.strip()) > 0)
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Tạo headers chứa authentication xi-api-key."""
+        if not self.is_configured():
+            raise VibiAPIError("Voice API Key chưa được cài đặt! Vui lòng nhập và lưu API Key trước khi sử dụng.")
+        return {
+            "xi-api-key": self.api_key,
+            "Content-Type": "application/json",
+            "User-Agent": "PyQt6-VoiceAPIClient/1.0"
+        }
+
+    def get_account_info(self) -> Dict[str, Any]:
+        """Lấy thông tin tài khoản và số dư credits (GET /v1/auth/me)."""
+        url = f"{self.base_url}/v1/auth/me"
+        try:
+            res = self.session.get(url, headers=self._get_headers(), timeout=15)
+            if res.status_code == 401:
+                raise VibiAPIError("API Key Voice API không chính xác hoặc đã hết hạn (Mã lỗi 401)!")
+            res.raise_for_status()
+            return res.json()
+        except requests.RequestException as e:
+            if hasattr(e, 'response') and e.response is not None and e.response.status_code == 401:
+                raise VibiAPIError("API Key Voice API không chính xác hoặc đã hết hạn (Mã lỗi 401)!")
+            raise VibiAPIError(f"Không thể kết nối đến Voice API: {e}")
+
+    def get_models(self, provider: str = "elevenlabs") -> List[Dict[str, Any]]:
+        """Lấy danh sách các model khả dụng (GET /v1/models)."""
+        url = f"{self.base_url}/v1/models"
+        params = {"provider": provider}
+        try:
+            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res.raise_for_status()
+            return res.json()
+        except requests.RequestException as e:
+            raise VibiAPIError(f"Lỗi khi lấy danh sách model: {e}")
+
+    def list_default_voices(self, search: Optional[str] = None, page_size: int = 50) -> List[Dict[str, Any]]:
+        """Liệt kê các giọng premade/mặc định của ElevenLabs (GET /v1/default-voices)."""
+        url = f"{self.base_url}/v1/default-voices"
+        params: Dict[str, Any] = {"page_size": page_size}
+        if search:
+            params["search"] = search
+        try:
+            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res.raise_for_status()
+            data = res.json()
+            return data.get("voices", [])
+        except requests.RequestException as e:
+            raise VibiAPIError(f"Lỗi khi lấy danh sách giọng mặc định: {e}")
+
+    def list_shared_voices(
+        self,
+        search: Optional[str] = None,
+        page_size: int = 30,
+        page: int = 0,
+        sort: str = "trending",
+        gender: Optional[str] = None,
+        language: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Tìm kiếm thư viện giọng ElevenLabs dùng chung (GET /v1/shared-voices)."""
+        url = f"{self.base_url}/v1/shared-voices"
+        params: Dict[str, Any] = {
+            "page_size": page_size,
+            "page": page,
+            "sort": sort,
+        }
+        if search:
+            params["search"] = search
+        if gender and gender.lower() != "all":
+            params["gender"] = gender
+        if language and language.lower() != "all":
+            params["language"] = language
+
+        try:
+            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res.raise_for_status()
+            return res.json()
+        except requests.RequestException as e:
+            raise VibiAPIError(f"Lỗi khi tra cứu thư viện giọng shared: {e}")
+
+    def create_tts_task(
+        self,
+        voice_id: str,
+        text: str,
+        model_id: str = "eleven_v3",
+        language_code: str = "vi",
+        provider: str = "elevenlabs",
+        voice_settings: Optional[Dict[str, Any]] = None,
+        export_transcript: bool = False
+    ) -> Dict[str, Any]:
+        """Tạo tác vụ Text to Speech qua Vibi API (POST /v1/text-to-speech/{voice_id})."""
+        url = f"{self.base_url}/v1/text-to-speech/{voice_id}"
+
+        if voice_settings is None:
+            voice_settings = {
+                "stability": config.DEFAULT_VIBI_STABILITY,
+                "similarity_boost": config.DEFAULT_VIBI_SIMILARITY,
+                "speed": config.DEFAULT_VIBI_SPEED,
+                "use_speaker_boost": True
+            }
+
+        payload = {
+            "text": text,
+            "model_id": model_id,
+            "provider": provider,
+            "language_code": language_code,
+            "voice_settings": voice_settings,
+            "export_transcript": export_transcript
+        }
+
+        try:
+            res = self.session.post(url, headers=self._get_headers(), json=payload, timeout=25)
+            if res.status_code in (200, 201, 202):
+                return res.json()
+
+            try:
+                err_data = res.json()
+                msg = err_data.get("message") or err_data.get("error") or res.text
+            except Exception:
+                msg = res.text
+            raise VibiAPIError(f"Tạo task TTS thất bại [HTTP {res.status_code}]: {msg}")
+        except requests.RequestException as e:
+            raise VibiAPIError(f"Lỗi mạng khi gửi yêu cầu TTS: {e}")
+
+    def get_task_detail(self, task_id: str) -> Dict[str, Any]:
+        """Lấy chi tiết và trạng thái của tác vụ theo ID (GET /v1/history/{id})."""
+        url = f"{self.base_url}/v1/history/{task_id}"
+        try:
+            res = self.session.get(url, headers=self._get_headers(), timeout=15)
+            res.raise_for_status()
+            return res.json()
+        except requests.RequestException as e:
+            raise VibiAPIError(f"Lỗi khi kiểm tra tiến trình task {task_id}: {e}")
+
+    def wait_for_task(
+        self,
+        task_id: str,
+        timeout_sec: int = 180,
+        poll_interval: float = 1.5,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None
+    ) -> Dict[str, Any]:
+        """Chờ cho đến khi tác vụ hoàn thành (status == 'completed' hoặc 'failed')."""
+        start_time = time.time()
+        while time.time() - start_time < timeout_sec:
+            if is_cancelled and is_cancelled():
+                raise VibiAPIError("Tác vụ đã bị người dùng hủy.")
+
+            task = self.get_task_detail(task_id)
+            status = task.get("status")
+
+            if progress_callback:
+                progress_callback(task)
+
+            if status == "completed":
+                return task
+            elif status == "failed":
+                err = task.get("error") or "Lỗi xử lý tác vụ từ server Voice API"
+                raise VibiAPIError(f"Tác vụ {task_id} thất bại: {err}")
+
+            time.sleep(poll_interval)
+
+        raise VibiAPIError(f"Quá thời gian chờ ({timeout_sec}s) cho tác vụ {task_id}!")
+
+    def download_file(self, url: str, target_path: Path) -> Path:
+        """Tải file từ URL về đường dẫn chỉ định."""
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.session.get(url, stream=True, timeout=30) as r:
+                r.raise_for_status()
+                with open(target_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+            return target_path
+        except Exception as e:
+            raise VibiAPIError(f"Lỗi tải file từ {url}: {e}")
+
+    def generate_and_download(
+        self,
+        text: str,
+        voice_id: str,
+        output_filename: Optional[str] = None,
+        output_dir: Optional[Path] = None,
+        model_id: str = "eleven_v3",
+        language_code: str = "vi",
+        voice_settings: Optional[Dict[str, Any]] = None,
+        export_transcript: bool = False,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None
+    ) -> Tuple[Optional[Path], Optional[Path]]:
+        """Quy trình trọn gói: Gửi tạo TTS -> Chờ hoàn thành -> Tải file MP3 & Subtitle."""
+        target_dir = output_dir or config.DOWNLOADS_DIR
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        task_data = self.create_tts_task(
+            voice_id=voice_id,
+            text=text,
+            model_id=model_id,
+            language_code=language_code,
+            provider="elevenlabs",
+            voice_settings=voice_settings,
+            export_transcript=export_transcript
+        )
+
+        task_id = task_data.get("id")
+        if not task_id:
+            raise VibiAPIError("Phản hồi từ API không chứa Task ID!")
+
+        completed_task = self.wait_for_task(
+            task_id=task_id,
+            progress_callback=progress_callback,
+            is_cancelled=is_cancelled
+        )
+
+        result = completed_task.get("result", {})
+        audio_url = result.get("audio_url")
+        if not audio_url:
+            raise VibiAPIError("Task hoàn thành nhưng không tìm thấy audio_url trong kết quả!")
+
+        if not output_filename:
+            clean_title = re.sub(r'[\\/*?:"<>|]', "", text[:25]).strip().replace(" ", "_")
+            if not clean_title:
+                clean_title = "vibi_voice"
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_filename = f"{clean_title}_{timestamp}.mp3"
+        elif not output_filename.endswith(".mp3"):
+            output_filename += ".mp3"
+
+        audio_path = target_dir / output_filename
+        self.download_file(audio_url, audio_path)
+
+        transcript_path: Optional[Path] = None
+        transcript_url = result.get("transcript_url") or result.get("srt_url")
+        if transcript_url:
+            srt_name = audio_path.stem + ".srt"
+            transcript_path = target_dir / srt_name
+            try:
+                self.download_file(transcript_url, transcript_path)
+            except Exception:
+                transcript_path = None
+
+        return audio_path, transcript_path
+
+    @staticmethod
+    def split_long_text(text: str, max_chars: int = 3500) -> List[str]:
+        """Tách văn bản dài thành các đoạn nhỏ dưới giới hạn ký tự."""
+        if len(text) <= max_chars:
+            return [text]
+
+        sentences = re.split(r'(?<=[.!?\n])\s+', text)
+        chunks = []
+        current_chunk = ""
+
+        for sent in sentences:
+            if len(current_chunk) + len(sent) + 1 <= max_chars:
+                current_chunk += (" " if current_chunk else "") + sent
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = sent
+
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+        return chunks
