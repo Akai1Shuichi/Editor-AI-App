@@ -40,7 +40,7 @@ QWidget#central_widget, QWidget#content_container {
     background-color: #121316;
 }
 
-#watermark_tab, #tts_tab, #voice_lookup_tab, #settings_tab {
+#watermark_tab, #tts_tab, #voice_lookup_tab, #video_tab, #project_tab, #settings_tab {
     background-color: #121316;
 }
 
@@ -449,25 +449,53 @@ QTabBar::tab {
     background-color: #16171d;
     border: 1px solid #23252c;
     border-bottom: none;
-    padding: 6px 14px;
+    padding: 7px 16px;
     font-size: 12px;
     font-weight: 500;
     color: #9ca3af;
-    border-top-left-radius: 5px;
-    border-top-right-radius: 5px;
-    margin-right: 2px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    margin-right: 3px;
 }
 
 QTabBar::tab:selected {
     background-color: #1e2028;
     color: #60a5fa;
     border-bottom: 2px solid #3b82f6;
+    font-weight: 600;
 }
 
 QTabBar::tab:hover:!selected {
     background-color: #1a1c22;
     color: #f3f4f6;
 }
+
+/* ================= PROJECT WORKSPACE ================= */
+#project_workspace {
+    background-color: #121316;
+}
+
+#project_inner_tabs::pane {
+    border: 1px solid #232634;
+    border-radius: 8px;
+    background-color: #121316;
+    padding: 4px;
+}
+
+#project_inner_tabs QTabBar::tab {
+    padding: 9px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+}
+
+#project_inner_tabs QTabBar::tab:selected {
+    background-color: #181a23;
+    color: #38bdf8;
+    border-bottom: 2px solid #38bdf8;
+}
+
 
 /* ================= SPLITTER ================= */
 QSplitter::handle {
@@ -520,6 +548,212 @@ QSplitter::handle {
     font-size: 12px;
     color: #94a3b8;
 }
+
+/* ================= 2026 PROJECT EXPERIENCE ================= */
+#sidebar {
+    background-color: #12151b;
+    border-right: 1px solid #262c38;
+    min-width: 220px;
+    max-width: 220px;
+}
+
+#app_logo {
+    font-size: 15px;
+    font-weight: 700;
+    color: #f3f5f7;
+    letter-spacing: 0.8px;
+}
+
+#app_tagline, #page_subtitle, #meta_label {
+    color: #70798a;
+    font-size: 12px;
+}
+
+#nav_btn {
+    min-height: 36px;
+    margin: 2px 10px;
+    padding: 0 12px;
+    border: none;
+    border-left: 2px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: #a7afbe;
+}
+
+#nav_btn:hover {
+    background-color: #181d27;
+    color: #f3f5f7;
+}
+
+#nav_btn:checked {
+    background-color: #1b2130;
+    border-left: 2px solid #4f7cff;
+    color: #f3f5f7;
+    font-weight: 600;
+}
+
+#page_heading {
+    color: #f3f5f7;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+#section_heading {
+    color: #f3f5f7;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+#dialog_title, #workspace_title, #empty_title {
+    color: #f3f5f7;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+#workspace_page, #workspace_stack {
+    background-color: #0e1014;
+}
+
+#workspace_header {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #262c38;
+}
+
+#btn_back {
+    background: transparent;
+    border: none;
+    color: #a7afbe;
+    padding: 7px 4px;
+}
+
+#btn_back:hover {
+    color: #f3f5f7;
+    background: transparent;
+}
+
+#breadcrumb_separator {
+    color: #4a5364;
+    font-size: 16px;
+}
+
+#project_meta {
+    background-color: #151922;
+    border: 1px solid #262c38;
+    border-radius: 5px;
+    color: #a7afbe;
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+#btn_icon {
+    background-color: transparent;
+    border: 1px solid #262c38;
+    padding: 6px;
+}
+
+#project_search {
+    min-height: 24px;
+}
+
+#project_table {
+    background-color: #0e1014;
+    alternate-background-color: #0e1014;
+    border: 1px solid #262c38;
+    border-radius: 6px;
+    gridline-color: transparent;
+    selection-background-color: #1b2130;
+    selection-color: #f3f5f7;
+}
+
+#project_table QHeaderView::section {
+    background-color: #12151b;
+    border: none;
+    border-bottom: 1px solid #262c38;
+    color: #70798a;
+    padding: 9px 10px;
+}
+
+#project_table::item {
+    border: none;
+    border-bottom: 1px solid #202631;
+    padding: 8px 10px;
+}
+
+#project_table::item:hover {
+    background-color: #171c26;
+}
+
+#project_action_bar {
+    background-color: #12151b;
+    border: none;
+    border-top: 1px solid #262c38;
+}
+
+#selected_project_label {
+    color: #f3f5f7;
+    font-weight: 600;
+}
+
+#path_preview {
+    background-color: #101319;
+    border: 1px solid #262c38;
+    border-radius: 6px;
+}
+
+#path_value {
+    color: #a7afbe;
+    font-size: 12px;
+}
+
+#field_error {
+    color: #f06a6a;
+    font-size: 12px;
+}
+
+QMenu {
+    background-color: #151922;
+    border: 1px solid #262c38;
+    padding: 5px;
+}
+
+QMenu::item {
+    padding: 7px 28px 7px 10px;
+    border-radius: 4px;
+}
+
+QMenu::item:selected {
+    background-color: #1b2130;
+    color: #f3f5f7;
+}
+
+#project_inner_tabs::pane {
+    background-color: #0e1014;
+    border: none;
+    border-top: 1px solid #262c38;
+    padding-top: 8px;
+}
+
+#project_inner_tabs QTabBar::tab {
+    min-width: 150px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    color: #70798a;
+    padding: 10px 18px;
+}
+
+#project_inner_tabs QTabBar::tab:hover {
+    background-color: #151922;
+    color: #a7afbe;
+}
+
+#project_inner_tabs QTabBar::tab:selected {
+    background: transparent;
+    border-bottom: 2px solid #4f7cff;
+    color: #f3f5f7;
+}
 """
 
 def setup_theme(app: QApplication):
@@ -527,19 +761,19 @@ def setup_theme(app: QApplication):
     app.setStyle("Fusion")
 
     palette = QPalette()
-    palette.setColor(QPalette.ColorRole.Window, QColor("#121316"))
-    palette.setColor(QPalette.ColorRole.WindowText, QColor("#e5e7eb"))
-    palette.setColor(QPalette.ColorRole.Base, QColor("#14151a"))
-    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#181920"))
-    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#181920"))
-    palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#e5e7eb"))
-    palette.setColor(QPalette.ColorRole.Text, QColor("#e5e7eb"))
-    palette.setColor(QPalette.ColorRole.Button, QColor("#1e2029"))
-    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#e5e7eb"))
+    palette.setColor(QPalette.ColorRole.Window, QColor("#0e1014"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#f3f5f7"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#101319"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#151922"))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#151922"))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#f3f5f7"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#f3f5f7"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#151922"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#f3f5f7"))
     palette.setColor(QPalette.ColorRole.BrightText, QColor("#ffffff"))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor("#2563eb"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#4f7cff"))
     palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
-    palette.setColor(QPalette.ColorRole.Link, QColor("#3b82f6"))
+    palette.setColor(QPalette.ColorRole.Link, QColor("#4f7cff"))
 
     palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor("#4b5563"))
     palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor("#4b5563"))

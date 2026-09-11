@@ -16,9 +16,10 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 # Ưu tiên sử dụng python trong virtualenv nếu đang chạy từ python ngoài
-venv_python = BASE_DIR / ".venv" / "bin" / "python"
-if venv_python.exists() and sys.executable != str(venv_python):
-    pass
+venv_python = (BASE_DIR / ".venv" / "Scripts" / "python.exe") if sys.platform == "win32" else (BASE_DIR / ".venv" / "bin" / "python")
+if venv_python.exists() and Path(sys.executable).resolve() != venv_python.resolve():
+    import subprocess
+    sys.exit(subprocess.call([str(venv_python)] + sys.argv))
 
 from app.main import main
 

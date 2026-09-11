@@ -1,53 +1,41 @@
 # ⚡ AI Media Studio (PyQt6 Modern Dark Theme)
 
-Ứng dụng Desktop hiện đại với giao diện **PyQt6 Modern Dark Theme**, tích hợp công nghệ AI từ `evenlabs-voice`:
-1. **🧹 Gỡ Watermark AI**: Tự động loại bỏ Watermark Google Gemini / Imagen từ ảnh đơn hoặc hàng loạt (Batch). Hỗ trợ kéo thả ảnh (Drag & Drop), xem trước Trước/Sau (Before & After), điều chỉnh độ lợi sáng (Gain), đa luồng không giật lag.
-2. **⚡ Tạo Giọng Vibi TTS**: Chuyển đổi văn bản nhập tay thành giọng nói ElevenLabs chất lượng cao qua Vibi API. Hỗ trợ tự động chia nhỏ đoạn cho văn bản dài, tùy biến Model, Stability, Similarity, Speed, xuất phụ đề SRT và tích hợp sẵn trình phát Audio (Built-in Player) ngay trong app.
-3. **🔍 Tra Cứu Voice ID**: Tra cứu và tìm kiếm danh sách giọng đọc mặc định (Default Premade) và thư viện giọng cộng đồng (Shared Voice Library), lọc theo giới tính, ngôn ngữ, sắp xếp thịnh hành, copy nhanh Voice ID và 1-click chọn giọng cho tab TTS.
-4. **💳 Quản Lý API Key & Tài Khoản Vibi**: Nhập và lưu API Key an toàn vào `.env`, kiểm tra số dư Credits và thông tin tài khoản thời gian thực.
+Ứng dụng Desktop chuyên nghiệp với giao diện **PyQt6 Studio Modern Dark Theme**, tổ chức toàn bộ quy trình sản xuất video dạng chuỗi khép kín trong từng Dự Án:
+
+1. **🎬 Không Gian Dự Án & Sản Xuất (Project Studio Workspace)**:
+   - **Thanh Điều Khiển Dự Án (Project Toolbar)**: Chọn nhanh dự án, tạo dự án mới, xem tỉ lệ khung hình (16:9, 9:16, 1:1), FPS và mở thư mục dự án với 1 cú click.
+   - **Tích hợp 3 Bước Sản Xuất Khép Kín trong Màn Dự Án**:
+     - **🧹 Bước 1: Gỡ Watermark Ảnh**: Tự động loại bỏ Watermark Google Gemini / Imagen từ ảnh đơn hoặc hàng loạt (Batch). Xem trước Trước/Sau (Before & After), tự động lưu ảnh sạch vào thư mục `<du_an>/images/clean/`.
+     - **🎙️ Bước 2: Tạo Giọng TTS**: Chuyển đổi văn bản thành giọng nói ElevenLabs/MiniMax/CapCut chất lượng cao qua Vibi API. Hỗ trợ tra cứu Thư viện Voice, tự động chia nhỏ văn bản dài, xuất phụ đề SRT và tự động lưu vào `<du_an>/voice/`. Nút "🎬 Ghép Video" tự động chuyển dữ liệu sang Bước 3.
+     - **🎬 Bước 3: Ghép Video Thành Phẩm (Video Composer)**: Ghép video tự động đồng bộ ảnh cảnh sạch, phụ đề SRT, âm thanh voice và kịch bản phân đoạn JSON trong chính dự án. Tự động tính toán mốc thời gian hiển thị từng ảnh, xuất video chuẩn MP4 H.264/AAC với 3 tỉ lệ khung hình vào `<du_an>/output/`.
+   - **Quản Lý Danh Sách Dự Án (Project List)**: Xem danh sách tất cả dự án, số lượng ảnh sạch, voice, video đã xuất và kích hoạt chuyển đổi nhanh.
+2. **⚙️ Cài Đặt & Quản Lý Tài Khoản Vibi**: Nhập và lưu API Key an toàn vào `.env`, kiểm tra số dư Credits và thông tin tài khoản theo thời gian thực.
 
 ---
 
 ## 🚀 Hướng dẫn Khởi chạy Ứng dụng
 
-### Cách 1: Chạy trực tiếp bằng file script (Đơn giản nhất)
-```bash
-cd "editor video app"
-./run.sh
+### Windows (Khuyên dùng)
+```cmd
+cd Editor-AI-App
+.venv\Scripts\python.exe start_app.py
 ```
-
-### Cách 2: Khởi chạy bằng Python
-```bash
-cd "editor video app"
-.venv/bin/python start_app.py
-```
-Hoặc nếu đã kích hoạt môi trường ảo:
-```bash
-source .venv/bin/activate
-python3 start_app.py
+Hoặc chạy lệnh CLI tạo video:
+```cmd
+.venv\Scripts\python.exe create_video.py --images projects/review-cong-nghe-01/images/clean --audio projects/review-cong-nghe-01/voice/narration.mp3 --srt projects/review-cong-nghe-01/voice/narration.srt --json projects/review-cong-nghe-01/scenes.json --output projects/review-cong-nghe-01/output/final_video.mp4
 ```
 
 ---
 
-## 📂 Cấu trúc Dự án
+## 📂 Cấu trúc Thư Mục Dự Án Chuẩn
+Mỗi dự án được quản lý độc lập tại `projects/<ten_du_an>/`:
 ```
-editor video app/
-├── .env                          # Tệp lưu trữ VIBI_API_KEY và cài đặt
-├── requirements.txt              # Danh sách thư viện (PyQt6, Pillow, requests, numpy,...)
-├── run.sh                        # Script khởi chạy nhanh có phân quyền thực thi
-├── start_app.py                  # Entry point Python khởi động ứng dụng
-├── app/
-│   ├── config.py                 # Quản lý cấu hình runtime và đồng bộ .env
-│   ├── styles.py                 # Bộ QSS Stylesheet Modern Dark Theme cao cấp
-│   ├── main.py                   # Điểm khởi tạo QApplication và MainWindow
-│   ├── core/
-│   │   ├── watermark_remover.py  # Động cơ Inverse Alpha Blending gỡ watermark Gemini
-│   │   └── vibi_client.py        # Client kết nối Vibi API (TTS, Voices, Auth)
-│   └── ui/
-│       ├── main_window.py        # Cửa sổ chính với Sidebar điều hướng mượt mà
-│       ├── watermark_tab.py      # Giao diện gỡ watermark, Preview Before/After
-│       ├── tts_tab.py            # Giao diện Text to Speech & Trình phát Audio tích hợp
-│       ├── voice_lookup_tab.py   # Giao diện tra cứu thư viện giọng và Voice ID
-│       └── settings_tab.py       # Giao diện quản lý API Key và kiểm tra Credits
-└── downloads/                    # Thư mục mặc định lưu các file MP3 và SRT sinh ra
+projects/<ten_du_an>/
+├── project.json          # Cấu hình dự án (tên, tỉ lệ khung hình, fps, ngày tạo)
+├── scenes.json           # Kịch bản phân cảnh của video
+├── images/               # Thư mục ảnh gốc
+│   └── clean/            # Thư mục ảnh sạch đã gỡ watermark (được ưu tiên ghép vào video)
+├── voice/                # File âm thanh (.mp3, .wav) và phụ đề (.srt)
+└── output/               # Video MP4 xuất bản thành phẩm
 ```
+

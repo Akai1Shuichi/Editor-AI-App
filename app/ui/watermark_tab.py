@@ -130,7 +130,31 @@ class WatermarkTab(QWidget):
         self.selected_files: List[Path] = []
         self.output_dir: Optional[Path] = None
         self.worker: Optional[WatermarkWorker] = None
+        self.project = None
         self.init_ui()
+
+    def set_project(self, project):
+        """Cập nhật thông tin dự án hiện tại."""
+        previous_slug = getattr(self.project, "slug", None)
+        next_slug = getattr(project, "slug", None)
+        if previous_slug != next_slug and hasattr(self, "table"):
+            self.clear_file_list()
+        self.project = project
+        if project:
+            self.lbl_project_badge.setText("Kết quả: images/clean")
+            self.lbl_project_badge.setStyleSheet("color: #70798a; font-size: 11px;")
+            self.output_dir = project.clean_images_dir
+            self.chk_custom_out.setChecked(True)
+            self.chk_custom_out.setVisible(False)
+            self.btn_custom_out.setVisible(False)
+        else:
+            self.lbl_project_badge.setText("📁 Chưa chọn dự án")
+            self.lbl_project_badge.setStyleSheet("color: #6b7280; font-size: 11px;")
+            self.output_dir = None
+            self.chk_custom_out.setChecked(False)
+            self.chk_custom_out.setText("Lưu thư mục riêng")
+            self.chk_custom_out.setVisible(True)
+            self.btn_custom_out.setVisible(True)
 
     def init_ui(self):
         main_layout = QHBoxLayout(self)
@@ -192,9 +216,13 @@ class WatermarkTab(QWidget):
         s_layout.setContentsMargins(10, 8, 10, 8)
         s_layout.setSpacing(14)
 
-        # Output option
+        # Project Badge & Output option
+        self.lbl_project_badge = QLabel("📁 Chưa chọn dự án")
+        self.lbl_project_badge.setStyleSheet("color: #6b7280; font-size: 11px;")
+        s_layout.addWidget(self.lbl_project_badge)
+
         self.chk_custom_out = QCheckBox("Lưu thư mục riêng")
-        self.chk_custom_out.setToolTip("Mặc định ảnh sạch sẽ được lưu vào thư mục 'clean' bên trong thư mục ảnh gốc để tránh lộn xộn.")
+        self.chk_custom_out.setToolTip("Mặc định ảnh sạch sẽ được lưu vào thư mục 'clean' của dự án hoặc thư mục ảnh gốc.")
         self.chk_custom_out.toggled.connect(self.toggle_custom_out)
         self.btn_custom_out = QPushButton("Chọn...")
         self.btn_custom_out.setEnabled(False)
@@ -365,7 +393,12 @@ class WatermarkTab(QWidget):
 
         gain = 0.6
         preset_mode = "auto"
-        out_dir = self.output_dir if self.chk_custom_out.isChecked() else None
+        if self.chk_custom_out.isChecked() and self.output_dir:
+            out_dir = self.output_dir
+        elif self.project:
+            out_dir = self.project.clean_images_dir
+        else:
+            out_dir = None
 
         self.btn_start.setEnabled(False)
         self.btn_cancel.setEnabled(True)
@@ -402,8 +435,10 @@ class WatermarkTab(QWidget):
     def on_finished_all(self, total: int, success_count: int):
         self.btn_start.setEnabled(True)
         self.btn_cancel.setEnabled(False)
-        dest_desc = f"tại '{self.output_dir.name}'" if self.output_dir else "tại thư mục 'clean'"
-        self.status_lbl.setText(f"Hoàn thành: {success_count}/{total} file ({dest_desc}).")
+        if success_count and self.project:
+            self.project.save_metadata()
+        target_name = self.output_dir.name if self.output_dir else (self.project.clean_images_dir.name if self.project else "clean")
+        self.status_lbl.setText(f"Hoàn thành: {success_count}/{total} file (lưu tại '{target_name}').")
 
     def cancel_processing(self):
         if self.worker and self.worker.isRunning():
@@ -413,7 +448,9 @@ class WatermarkTab(QWidget):
 
     def open_output_dir(self):
         target = self.output_dir
-        if not target and self.selected_files:
+        if not target and self.project and self.project.clean_images_dir.exists():
+            target = self.project.clean_images_dir
+        elif not target and self.selected_files:
             clean_dir = self.selected_files[0].parent / "clean"
             target = clean_dir if clean_dir.exists() else self.selected_files[0].parent
         if not target:

@@ -6,10 +6,14 @@ from dotenv import load_dotenv
 APP_DIR = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = APP_DIR / "downloads"
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+PROJECTS_DIR = APP_DIR / "projects"
+PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 
 ENV_FILE = APP_DIR / ".env"
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE)
+
+ACTIVE_PROJECT = os.getenv("ACTIVE_PROJECT", "")
 
 # Cấu hình Vibi API mặc định
 VIBI_API_BASE = os.getenv("VIBI_API_BASE", "https://api.vibi.pro")
@@ -23,9 +27,10 @@ DEFAULT_VIBI_SPEED = float(os.getenv("DEFAULT_VIBI_SPEED", "1.0"))
 
 def reload_config():
     global VIBI_API_BASE, VIBI_API_KEY, DEFAULT_VIBI_MODEL, DEFAULT_VIBI_LANGUAGE, DEFAULT_VIBI_VOICE_ID
-    global DEFAULT_VIBI_STABILITY, DEFAULT_VIBI_SIMILARITY, DEFAULT_VIBI_SPEED
+    global DEFAULT_VIBI_STABILITY, DEFAULT_VIBI_SIMILARITY, DEFAULT_VIBI_SPEED, ACTIVE_PROJECT
     if ENV_FILE.exists():
         load_dotenv(ENV_FILE, override=True)
+    ACTIVE_PROJECT = os.getenv("ACTIVE_PROJECT", "")
     VIBI_API_BASE = os.getenv("VIBI_API_BASE", "https://api.vibi.pro")
     VIBI_API_KEY = os.getenv("VIBI_API_KEY", "")
     DEFAULT_VIBI_MODEL = os.getenv("DEFAULT_VIBI_MODEL", "eleven_v3")

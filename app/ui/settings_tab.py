@@ -52,6 +52,15 @@ class SettingsTab(QWidget):
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(14)
 
+        page_title = QLabel("Cài đặt")
+        page_title.setObjectName("page_heading")
+        page_subtitle = QLabel(
+            "Thiết lập tài khoản và giá trị mặc định cho các dự án mới."
+        )
+        page_subtitle.setObjectName("page_subtitle")
+        layout.addWidget(page_title)
+        layout.addWidget(page_subtitle)
+
         # 1. Panel Tài khoản & Vibi API Key
         acc_panel = QFrame()
         acc_panel.setProperty("class", "panel")

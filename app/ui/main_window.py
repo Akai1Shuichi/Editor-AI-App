@@ -5,18 +5,18 @@ from PyQt6.QtWidgets import (
 )
 
 from app import config
-from app.ui.watermark_tab import WatermarkTab
-from app.ui.tts_tab import TTSTab
+from app.ui.project_workspace import ProjectWorkspace
 from app.ui.settings_tab import SettingsTab
 
+
 class MainWindow(QMainWindow):
-    """Cửa sổ chính của ứng dụng - Giao diện tối giản, trực quan, chuẩn UI/UX."""
+    """Cửa sổ chính của ứng dụng - Giao diện Studio tối giản, trực quan, chuẩn UI/UX."""
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Media Studio")
-        self.resize(1280, 760)
-        self.setMinimumSize(1020, 620)
+        self.resize(1440, 900)
+        self.setMinimumSize(1100, 700)
 
         self.nav_buttons = []
         self.init_ui()
@@ -39,31 +39,29 @@ class MainWindow(QMainWindow):
         sidebar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         sb_layout = QVBoxLayout(sidebar)
         sb_layout.setContentsMargins(0, 0, 0, 0)
-        sb_layout.setSpacing(2)
+        sb_layout.setSpacing(4)
 
         # Sidebar Brand
         brand_box = QWidget()
         brand_box.setObjectName("sidebar_brand")
         b_layout = QVBoxLayout(brand_box)
-        b_layout.setContentsMargins(16, 16, 16, 10)
+        b_layout.setContentsMargins(16, 16, 16, 12)
         b_layout.setSpacing(2)
 
-        logo = QLabel("Studio AI")
+        logo = QLabel("AI MEDIA STUDIO")
         logo.setObjectName("app_logo")
-        tagline = QLabel("Watermark & Voice Studio")
+        tagline = QLabel("Production workspace")
         tagline.setObjectName("app_tagline")
 
         b_layout.addWidget(logo)
         b_layout.addWidget(tagline)
         sb_layout.addWidget(brand_box)
 
-        # Navigation Buttons
-        self.btn_nav_watermark = self.create_nav_btn("🧹  Gỡ Watermark", 0)
-        self.btn_nav_tts = self.create_nav_btn("🎙️  Tạo giọng TTS", 1)
-        self.btn_nav_settings = self.create_nav_btn("⚙️  Cài đặt && Số dư", 2)
+        # Navigation Buttons (Chuẩn Studio: Toàn bộ quy trình gỡ watermark, tạo voice, ghép video ở trong Màn Dự Án)
+        self.btn_nav_project = self.create_nav_btn("Dự án", 0)
+        self.btn_nav_settings = self.create_nav_btn("Cài đặt", 1)
 
-        sb_layout.addWidget(self.btn_nav_watermark)
-        sb_layout.addWidget(self.btn_nav_tts)
+        sb_layout.addWidget(self.btn_nav_project)
         sb_layout.addWidget(self.btn_nav_settings)
         sb_layout.addStretch()
 
@@ -90,31 +88,17 @@ class MainWindow(QMainWindow):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
 
-        # Top Bar
-        top_bar = QFrame()
-        top_bar.setObjectName("top_bar")
-        top_bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(20, 8, 20, 8)
-
-        self.lbl_page_title = QLabel("Gỡ Watermark AI")
-        self.lbl_page_title.setObjectName("page_title")
-        top_layout.addWidget(self.lbl_page_title)
-        top_layout.addStretch()
-
-        content_layout.addWidget(top_bar)
-
-        # Stacked Pages
+        # Stacked Pages:
+        # Index 0: ProjectWorkspace (Bao gồm Quản lý dự án + 3 bước: Watermark -> Voice TTS -> Ghép Video)
+        # Index 1: SettingsTab (Cấu hình Voice API & tài khoản)
         self.stack = QStackedWidget()
         self.stack.setObjectName("content_container")
         self.stack.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        self.watermark_tab = WatermarkTab()
-        self.tts_tab = TTSTab()
+        self.project_workspace = ProjectWorkspace()
         self.settings_tab = SettingsTab()
 
-        self.stack.addWidget(self.watermark_tab)
-        self.stack.addWidget(self.tts_tab)
+        self.stack.addWidget(self.project_workspace)
         self.stack.addWidget(self.settings_tab)
 
         content_layout.addWidget(self.stack)
@@ -138,14 +122,8 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(index)
         for i, btn in enumerate(self.nav_buttons):
             btn.setChecked(i == index)
-
-        titles = [
-            "Gỡ Watermark Gemini / Imagen",
-            "Tạo Giọng Nói Đa Nền Tảng (ElevenLabs, MiniMax, CapCut) & Thư Viện Voice",
-            "Cài Đặt & Quản Lý Tài Khoản Voice API"
-        ]
-        if 0 <= index < len(titles):
-            self.lbl_page_title.setText(titles[index])
+        if index == 0:
+            self.project_workspace.show_project_list()
 
     def on_api_key_saved(self, key: str):
         self.update_api_status_badge()
@@ -159,8 +137,8 @@ class MainWindow(QMainWindow):
 
     def update_api_status_badge(self):
         if config.VIBI_API_KEY and len(config.VIBI_API_KEY.strip()) > 0:
-            self.api_chip.setText("● Voice API Đã Kết Nối")
-            self.api_chip.setStyleSheet("background-color: #064e3b; border: 1px solid #065f46; color: #34d399; border-radius: 6px; padding: 6px 10px; font-size: 11px; font-weight: 600;")
+            self.api_chip.setText("Voice API\nĐã cấu hình")
+            self.api_chip.setStyleSheet("color: #a7afbe; padding: 6px 10px; font-size: 11px;")
         else:
-            self.api_chip.setText("○ Chưa có Voice API Key")
-            self.api_chip.setStyleSheet("background-color: #1a202c; border: 1px solid #2d3748; color: #94a3b8; border-radius: 6px; padding: 6px 10px; font-size: 11px;")
+            self.api_chip.setText("Voice API\nChưa cấu hình")
+            self.api_chip.setStyleSheet("color: #70798a; padding: 6px 10px; font-size: 11px;")

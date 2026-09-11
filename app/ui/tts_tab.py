@@ -31,7 +31,8 @@ class TTSWorker(QThread):
         voice_settings: Dict[str, Any],
         export_srt: bool,
         provider: str = "elevenlabs",
-        output_filename: Optional[str] = None
+        output_filename: Optional[str] = None,
+        output_dir: Optional[Path] = None
     ):
         super().__init__()
         self.text = text
@@ -42,6 +43,7 @@ class TTSWorker(QThread):
         self.export_srt = export_srt
         self.provider = provider
         self.output_filename = output_filename
+        self.output_dir = output_dir
         self._is_cancelled = False
 
     def cancel(self):
@@ -85,6 +87,7 @@ class TTSWorker(QThread):
                     text=chunk,
                     voice_id=self.voice_id,
                     output_filename=chunk_filename,
+                    output_dir=self.output_dir,
                     model_id=self.model_id,
                     language_code=self.lang_code,
                     provider=self.provider,
@@ -112,6 +115,7 @@ class TTSWorker(QThread):
 class TTSTab(QWidget):
     """Tab tạo giọng ElevenLabs từ văn bản - Thiết kế gọn gàng, súc tích."""
     request_voice_lookup = pyqtSignal()
+    send_to_video = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -119,6 +123,8 @@ class TTSTab(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.worker: Optional[TTSWorker] = None
         self.current_audio_path: Optional[Path] = None
+        self.current_srt_path: Optional[Path] = None
+        self.project = None
 
         # Trình phát audio
         self.player = QMediaPlayer()
@@ -130,6 +136,31 @@ class TTSTab(QWidget):
         self.player.durationChanged.connect(self.on_player_duration_changed)
 
         self.init_ui()
+
+    def set_project(self, project):
+        """Cập nhật thông tin dự án hiện tại."""
+        previous_slug = getattr(self.project, "slug", None)
+        next_slug = getattr(project, "slug", None)
+        if previous_slug != next_slug and hasattr(self, "txt_input"):
+            self.player.stop()
+            self.player.setSource(QUrl())
+            self.current_audio_path = None
+            self.current_srt_path = None
+            self.txt_input.clear()
+            self.lbl_player_file.setText("Chưa có file âm thanh")
+            self.btn_play_pause.setEnabled(False)
+            self.btn_stop.setEnabled(False)
+            self.btn_to_video.setEnabled(False)
+            self.slider_player.setRange(0, 0)
+            self.progress_bar.setValue(0)
+        self.project = project
+        if hasattr(self, "lbl_project_badge"):
+            if project:
+                self.lbl_project_badge.setVisible(False)
+            else:
+                self.lbl_project_badge.setText("📁 Chưa chọn dự án")
+                self.lbl_project_badge.setStyleSheet("color: #6b7280; font-size: 11px;")
+                self.lbl_project_badge.setVisible(True)
 
     def init_ui(self):
         root_layout = QVBoxLayout(self)
@@ -156,6 +187,10 @@ class TTSTab(QWidget):
         self.lbl_char_count.setStyleSheet("color: #6b7280; font-size: 11px;")
 
         text_top.addWidget(lbl_text)
+        text_top.addSpacing(10)
+        self.lbl_project_badge = QLabel("📁 Chưa chọn dự án")
+        self.lbl_project_badge.setStyleSheet("color: #6b7280; font-size: 11px;")
+        text_top.addWidget(self.lbl_project_badge)
         text_top.addStretch()
         text_top.addWidget(self.lbl_char_count)
         tts_layout.addLayout(text_top)
@@ -318,6 +353,14 @@ class TTSTab(QWidget):
 
         p_info_bar.addWidget(self.lbl_player_file)
         p_info_bar.addStretch()
+
+        self.btn_to_video = QPushButton("🎬  Ghép Video")
+        self.btn_to_video.setObjectName("btn_subtle")
+        self.btn_to_video.setToolTip("Chuyển file Voice & Phụ đề SRT sang tab Ghép Video")
+        self.btn_to_video.setEnabled(False)
+        self.btn_to_video.clicked.connect(self._on_to_video_clicked)
+        p_info_bar.addWidget(self.btn_to_video)
+
         p_info_bar.addWidget(self.btn_open_folder)
         pp_layout.addLayout(p_info_bar)
 
@@ -529,6 +572,8 @@ class TTSTab(QWidget):
         self.progress_bar.setValue(10)
         self.lbl_status.setText(f"Đang kết nối Voice API ({provider.upper()})...")
 
+        out_dir = self.project.voice_dir if self.project else None
+
         self.worker = TTSWorker(
             text=text,
             voice_id=voice_id,
@@ -536,7 +581,8 @@ class TTSTab(QWidget):
             lang_code=lang,
             voice_settings=settings,
             export_srt=self.chk_srt.isChecked(),
-            provider=provider
+            provider=provider,
+            output_dir=out_dir
         )
         self.worker.status_updated.connect(self.lbl_status.setText)
         self.worker.progress_updated.connect(self.progress_bar.setValue)
@@ -555,8 +601,11 @@ class TTSTab(QWidget):
 
         if success:
             self.lbl_status.setText("Tạo giọng thành công.")
+            if self.project:
+                self.project.save_metadata()
             p = Path(audio_path)
             self.current_audio_path = p
+            self.current_srt_path = Path(srt_path) if srt_path else None
             srt_str = f" + Phụ đề {Path(srt_path).name}" if srt_path else ""
             self.lbl_player_file.setText(f"{p.name} ({p.stat().st_size:,} bytes){srt_str}")
 
@@ -564,9 +613,15 @@ class TTSTab(QWidget):
             self.btn_play_pause.setEnabled(True)
             self.btn_stop.setEnabled(True)
             self.btn_play_pause.setText("Phát")
+            self.btn_to_video.setEnabled(True)
         else:
             self.lbl_status.setText(f"Lỗi: {msg}")
             QMessageBox.critical(self, "Lỗi tạo giọng", msg)
+
+    def _on_to_video_clicked(self):
+        if self.current_audio_path:
+            srt_p = str(self.current_srt_path) if self.current_srt_path else ""
+            self.send_to_video.emit(str(self.current_audio_path), srt_p)
 
     def toggle_play_pause(self):
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
@@ -598,7 +653,7 @@ class TTSTab(QWidget):
         return f"{mins:02d}:{sec:02d}"
 
     def open_downloads(self):
-        target = config.DOWNLOADS_DIR
+        target = self.project.voice_dir if self.project and self.project.voice_dir.exists() else config.DOWNLOADS_DIR
         try:
             if sys.platform.startswith("win"):
                 os.startfile(str(target))
