@@ -364,17 +364,21 @@ class VoiceLookupTab(QWidget):
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(["Nền Tảng", "Tên Giọng", "Voice ID", "Giới Tính", "Ngôn Ngữ / Thẻ", "Thao Tác"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
 
-        self.table.setColumnWidth(0, 110)
+        self.table.setColumnWidth(0, 125)
         self.table.setColumnWidth(1, 200)
-        self.table.setColumnWidth(2, 170)
+        self.table.setColumnWidth(2, 160)
         self.table.setColumnWidth(3, 80)
-        self.table.setColumnWidth(5, 300)
+        self.table.setColumnWidth(4, 150)
+        self.table.setColumnWidth(5, 285)
+        self.table.horizontalHeader().setMinimumSectionSize(60)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.table.verticalHeader().setDefaultSectionSize(44)
         layout.addWidget(self.table)
 
@@ -382,7 +386,7 @@ class VoiceLookupTab(QWidget):
         self.footer_bar = QFrame()
         self.footer_bar.setObjectName("pagination_bar")
         footer_layout = QHBoxLayout(self.footer_bar)
-        footer_layout.setContentsMargins(12, 6, 12, 6)
+        footer_layout.setContentsMargins(12, 8, 12, 8)
         footer_layout.setSpacing(10)
 
         # Bên trái: Thông tin hiển thị / trạng thái
@@ -399,43 +403,44 @@ class VoiceLookupTab(QWidget):
         self.combo_page_size.addItem("30 / trang", 30)
         self.combo_page_size.addItem("50 / trang", 50)
         self.combo_page_size.addItem("100 / trang", 100)
-        self.combo_page_size.setFixedWidth(105)
-        self.combo_page_size.setFixedHeight(28)
+        self.combo_page_size.setMaxVisibleItems(10)
+        self.combo_page_size.setFixedWidth(115)
+        self.combo_page_size.setFixedHeight(32)
         self.combo_page_size.currentIndexChanged.connect(self.on_page_size_changed)
 
         # Nút về trang đầu: «
         self.btn_first = QPushButton("«")
         self.btn_first.setToolTip("Trang đầu")
-        self.btn_first.setFixedSize(30, 28)
+        self.btn_first.setFixedSize(32, 32)
         self.btn_first.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_first.clicked.connect(self.go_first_page)
 
         # Nút lùi: ‹ Trước
         self.btn_prev = QPushButton("‹ Trước")
-        self.btn_prev.setFixedSize(76, 28)
+        self.btn_prev.setFixedSize(78, 32)
         self.btn_prev.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_prev.clicked.connect(self.go_prev_page)
 
         # Huy hiệu số trang (Page badge pill)
         self.lbl_page_info = QLabel("Trang 1")
-        self.lbl_page_info.setFixedHeight(28)
+        self.lbl_page_info.setFixedHeight(32)
         self.lbl_page_info.setMinimumWidth(85)
         self.lbl_page_info.setStyleSheet(
             "background-color: #1e2230; border: 1px solid #2e3446; "
-            "border-radius: 5px; padding: 0 10px; font-weight: 600; color: #38bdf8; font-size: 12px;"
+            "border-radius: 6px; padding: 0 10px; font-weight: 600; color: #38bdf8; font-size: 12px;"
         )
         self.lbl_page_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Nút tiến: Sau ›
         self.btn_next = QPushButton("Sau ›")
-        self.btn_next.setFixedSize(76, 28)
+        self.btn_next.setFixedSize(78, 32)
         self.btn_next.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_next.clicked.connect(self.go_next_page)
 
         # Nút đến trang cuối: »
         self.btn_last = QPushButton("»")
         self.btn_last.setToolTip("Trang cuối")
-        self.btn_last.setFixedSize(30, 28)
+        self.btn_last.setFixedSize(32, 32)
         self.btn_last.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_last.clicked.connect(self.go_last_page)
 
@@ -561,37 +566,44 @@ class VoiceLookupTab(QWidget):
             # Cột 0: Nền tảng
             item_prov = QTableWidgetItem(provider_disp)
             item_prov.setForeground(Qt.GlobalColor.cyan)
+            item_prov.setToolTip(f"Nền tảng: {provider_disp}")
             self.table.setItem(row, 0, item_prov)
 
             # Cột 1: Tên Giọng
             item_name = QTableWidgetItem(name)
             item_name.setForeground(Qt.GlobalColor.white)
-            if v.get("description"):
-                item_name.setToolTip(v.get("description"))
+            desc = v.get("description")
+            item_name.setToolTip(f"{name}\n{desc}" if desc else name)
             self.table.setItem(row, 1, item_name)
 
             # Cột 2: Voice ID
             item_id = QTableWidgetItem(v_id)
             item_id.setForeground(Qt.GlobalColor.yellow)
+            item_id.setToolTip(f"Voice ID: {v_id}\n(Click nút 'Copy' để sao chép)")
             self.table.setItem(row, 2, item_id)
 
             # Cột 3: Giới tính
-            self.table.setItem(row, 3, QTableWidgetItem(gender))
+            item_gender = QTableWidgetItem(gender)
+            item_gender.setToolTip(f"Giới tính: {gender}")
+            self.table.setItem(row, 3, item_gender)
 
             # Cột 4: Ngôn ngữ / Thẻ
-            self.table.setItem(row, 4, QTableWidgetItem(lang))
+            item_lang = QTableWidgetItem(lang)
+            item_lang.setToolTip(f"Ngôn ngữ / Thẻ:\n{lang}")
+            self.table.setItem(row, 4, item_lang)
 
             # Cột 5: Thao tác (Nghe thử, Dùng giọng, Copy ID, Mặc định)
             action_widget = QWidget()
             a_layout = QHBoxLayout(action_widget)
             a_layout.setContentsMargins(4, 2, 4, 2)
-            a_layout.setSpacing(5)
+            a_layout.setSpacing(4)
             a_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             # Nút Nghe thử
             btn_play = QPushButton("▶ Nghe")
             btn_play.setObjectName("btn_subtle")
-            btn_play.setMinimumWidth(65)
+            btn_play.setMinimumWidth(60)
+            btn_play.setMaximumWidth(68)
             btn_play.setCursor(Qt.CursorShape.PointingHandCursor)
             if preview_url:
                 btn_play.clicked.connect(lambda _, u=preview_url, b=btn_play: self.toggle_preview(u, b))
@@ -602,21 +614,24 @@ class VoiceLookupTab(QWidget):
             # Nút Dùng giọng
             btn_use = QPushButton("Dùng giọng")
             btn_use.setObjectName("btn_primary")
-            btn_use.setMinimumWidth(78)
+            btn_use.setMinimumWidth(74)
+            btn_use.setMaximumWidth(82)
             btn_use.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_use.clicked.connect(lambda _, vid=v_id, vn=name, p=provider, l=lang: self.use_voice(vid, vn, p, l))
 
             # Nút Copy ID
             btn_copy = QPushButton("Copy")
             btn_copy.setObjectName("btn_subtle")
-            btn_copy.setMinimumWidth(50)
+            btn_copy.setMinimumWidth(44)
+            btn_copy.setMaximumWidth(52)
             btn_copy.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_copy.clicked.connect(lambda _, vid=v_id: self.copy_id(vid))
 
             # Nút Mặc định
             btn_def = QPushButton("Mặc định")
             btn_def.setObjectName("btn_subtle")
-            btn_def.setMinimumWidth(65)
+            btn_def.setMinimumWidth(64)
+            btn_def.setMaximumWidth(72)
             btn_def.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_def.clicked.connect(lambda _, vid=v_id: self.set_default(vid))
 

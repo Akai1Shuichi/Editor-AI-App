@@ -9,7 +9,7 @@ from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QProgressBar, QTableWidget, QTableWidgetItem,
-    QHeaderView, QSlider, QComboBox, QCheckBox, QFrame, QMessageBox,
+    QHeaderView, QCheckBox, QFrame, QMessageBox,
     QSplitter
 )
 
@@ -21,7 +21,7 @@ class WatermarkWorker(QThread):
     file_processed = pyqtSignal(int, int, str, bool, str)
     finished_all = pyqtSignal(int, int)
 
-    def __init__(self, file_paths: List[Path], output_dir: Optional[Path], gain: float, preset_mode: str):
+    def __init__(self, file_paths: List[Path], output_dir: Optional[Path], gain: float = 0.6, preset_mode: str = "auto"):
         super().__init__()
         self.file_paths = file_paths
         self.output_dir = output_dir
@@ -184,30 +184,13 @@ class WatermarkTab(QWidget):
         self.table.itemSelectionChanged.connect(self.on_table_selection_changed)
         left_layout.addWidget(self.table)
 
-        # Cấu hình tham số gỡ watermark (Gọn trong 1 dòng)
+        # Cấu hình lưu trữ (Gọn trong 1 dòng)
         settings_panel = QFrame()
         settings_panel.setProperty("class", "panel")
         settings_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         s_layout = QHBoxLayout(settings_panel)
         s_layout.setContentsMargins(10, 8, 10, 8)
         s_layout.setSpacing(14)
-
-        # Chế độ
-        lbl_mode = QLabel("Chế độ:")
-        lbl_mode.setProperty("class", "section_label")
-        self.combo_preset = QComboBox()
-        self.combo_preset.addItems(["Tự động (Auto)", "Cố định (Classic)"])
-
-        # Gain slider
-        lbl_gain = QLabel("Độ sáng:")
-        lbl_gain.setProperty("class", "section_label")
-        self.gain_val_lbl = QLabel("0.60")
-        self.gain_val_lbl.setFixedWidth(28)
-        self.gain_slider = QSlider(Qt.Orientation.Horizontal)
-        self.gain_slider.setRange(20, 100)
-        self.gain_slider.setValue(60)
-        self.gain_slider.setFixedWidth(90)
-        self.gain_slider.valueChanged.connect(lambda v: self.gain_val_lbl.setText(f"{v / 100.0:.2f}"))
 
         # Output option
         self.chk_custom_out = QCheckBox("Lưu thư mục riêng")
@@ -217,12 +200,6 @@ class WatermarkTab(QWidget):
         self.btn_custom_out.setEnabled(False)
         self.btn_custom_out.clicked.connect(self.choose_output_folder)
 
-        s_layout.addWidget(lbl_mode)
-        s_layout.addWidget(self.combo_preset)
-        s_layout.addWidget(lbl_gain)
-        s_layout.addWidget(self.gain_slider)
-        s_layout.addWidget(self.gain_val_lbl)
-        s_layout.addSpacing(10)
         s_layout.addWidget(self.chk_custom_out)
         s_layout.addWidget(self.btn_custom_out)
         s_layout.addStretch()
@@ -332,7 +309,9 @@ class WatermarkTab(QWidget):
                 self.selected_files.append(p)
                 row = self.table.rowCount()
                 self.table.insertRow(row)
-                self.table.setItem(row, 0, QTableWidgetItem(p.name))
+                item_file = QTableWidgetItem(p.name)
+                item_file.setToolTip(str(p))
+                self.table.setItem(row, 0, item_file)
                 self.table.setItem(row, 1, QTableWidgetItem("Chờ"))
                 self.table.setItem(row, 2, QTableWidgetItem("-"))
 
@@ -384,8 +363,8 @@ class WatermarkTab(QWidget):
             QMessageBox.warning(self, "Chưa chọn file", "Vui lòng thêm ít nhất 1 ảnh để xử lý!")
             return
 
-        gain = self.gain_slider.value() / 100.0
-        preset_mode = "auto" if self.combo_preset.currentIndex() == 0 else "classic"
+        gain = 0.6
+        preset_mode = "auto"
         out_dir = self.output_dir if self.chk_custom_out.isChecked() else None
 
         self.btn_start.setEnabled(False)
@@ -406,7 +385,9 @@ class WatermarkTab(QWidget):
             item_status = QTableWidgetItem("Xong")
             item_status.setForeground(Qt.GlobalColor.green)
             self.table.setItem(row, 1, item_status)
-            self.table.setItem(row, 2, QTableWidgetItem(msg))
+            item_res = QTableWidgetItem(msg)
+            item_res.setToolTip(msg)
+            self.table.setItem(row, 2, item_res)
             clean_path = Path(msg)
             if clean_path.exists():
                 self.display_image_preview(clean_path, self.lbl_preview_clean)

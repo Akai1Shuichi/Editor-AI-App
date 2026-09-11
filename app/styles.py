@@ -22,6 +22,16 @@ QMainWindow, QDialog {
     background-color: #121316;
 }
 
+/* ================= TOOLTIP ================= */
+QToolTip {
+    background-color: #1e2029;
+    color: #f8fafc;
+    border: 1px solid #3b82f6;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
 #central_widget, #content_container, QStackedWidget, QSplitter {
     background-color: #121316;
 }
@@ -242,6 +252,23 @@ QComboBox QAbstractItemView {
     selection-background-color: #2563eb;
     selection-color: #ffffff;
     padding: 4px;
+    outline: none;
+}
+
+QComboBox QAbstractItemView::item {
+    min-height: 30px;
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+
+QComboBox QAbstractItemView::item:hover {
+    background-color: #262937;
+    color: #ffffff;
+}
+
+QComboBox QAbstractItemView::item:selected {
+    background-color: #2563eb;
+    color: #ffffff;
 }
 
 /* ================= BUTTONS ================= */
@@ -378,7 +405,7 @@ QTableWidget::item:hover {
 }
 
 QTableWidget QPushButton {
-    padding: 3px 8px;
+    padding: 3px 6px;
     font-size: 11px;
     font-weight: 500;
     min-height: 24px;
@@ -459,12 +486,12 @@ QSplitter::handle {
 #pagination_bar QPushButton {
     background-color: #1a1c25;
     border: 1px solid #2b2e3c;
-    border-radius: 5px;
-    padding: 4px 8px;
+    border-radius: 6px;
+    padding: 4px 10px;
     font-size: 12px;
     font-weight: 500;
     color: #cbd5e1;
-    min-height: 26px;
+    min-height: 30px;
 }
 
 #pagination_bar QPushButton:hover {
@@ -482,11 +509,11 @@ QSplitter::handle {
 #pagination_bar QComboBox {
     background-color: #1a1c25;
     border: 1px solid #2b2e3c;
-    border-radius: 5px;
-    padding: 2px 8px;
+    border-radius: 6px;
+    padding: 4px 10px;
     font-size: 12px;
     color: #cbd5e1;
-    min-height: 26px;
+    min-height: 30px;
 }
 
 #pagination_bar QLabel {

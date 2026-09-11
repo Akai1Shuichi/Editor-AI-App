@@ -15,8 +15,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Media Studio")
-        self.resize(1120, 720)
-        self.setMinimumSize(920, 600)
+        self.resize(1280, 760)
+        self.setMinimumSize(1020, 620)
 
         self.nav_buttons = []
         self.init_ui()
