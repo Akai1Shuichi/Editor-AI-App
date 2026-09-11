@@ -167,14 +167,6 @@ class VideoTab(QWidget):
         self.txt_json_file = QLineEdit()
         self.txt_json_file.textChanged.connect(self.on_input_changed)
 
-        # Nút tiện ích quét nhanh
-        quick_box = QHBoxLayout()
-        btn_scan_latest = QPushButton("⚡ Tự Động Quét File Mới Nhất")
-        btn_scan_latest.setObjectName("btn_subtle")
-        btn_scan_latest.clicked.connect(self.auto_detect_defaults)
-        quick_box.addWidget(btn_scan_latest)
-        in_layout.addLayout(quick_box)
-
         left_layout.addWidget(panel_inputs)
 
         # Card 2: Cấu hình Video
