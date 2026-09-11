@@ -5,12 +5,12 @@ from pathlib import Path
 from typing import List, Optional
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QColor
+from PyQt6.QtGui import QAction, QPixmap, QDragEnterEvent, QDropEvent, QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QProgressBar, QTableWidget, QTableWidgetItem,
     QHeaderView, QCheckBox, QFrame, QMessageBox, QLineEdit, QSizePolicy,
-    QSplitter, QTabWidget
+    QMenu, QSplitter, QTabWidget
 )
 
 from app.core.watermark_remover import GeminiWatermarkRemover
@@ -186,6 +186,7 @@ class WatermarkTab(QWidget):
         if previous_slug != next_slug and hasattr(self, "table"):
             self.clear_file_list()
         self.project = project
+        self.btn_select_files.setVisible(project is None)
         if project:
             clean_count = len(project.get_clean_images())
             raw_count = len(project.get_raw_images())
@@ -251,6 +252,7 @@ class WatermarkTab(QWidget):
                     self.table.setItem(row, 2, QTableWidgetItem("-"))
                 self.status_lbl.setText(f"Có {len(raw_imgs)} ảnh gốc trong thư mục images/, bấm Bắt đầu để xử lý.")
                 self.display_image_preview(raw_imgs[0], self.lbl_preview_orig)
+        self._update_file_count()
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -288,9 +290,9 @@ class WatermarkTab(QWidget):
         self.drop_area.clicked.connect(self.choose_files)
         left_layout.addWidget(self.drop_area)
 
-        # Toolbar chọn file
-        btn_box = QHBoxLayout()
-        btn_box.setSpacing(8)
+        # Nguồn nhập ảnh
+        source_box = QHBoxLayout()
+        source_box.setSpacing(8)
 
         self.btn_select_files = QPushButton("Chọn File Ảnh...")
         self.btn_select_files.clicked.connect(self.choose_files)
@@ -299,14 +301,15 @@ class WatermarkTab(QWidget):
         self.btn_select_folder.setObjectName("btn_subtle")
         self.btn_select_folder.clicked.connect(self.choose_folder)
 
-        self.btn_clear = QPushButton("Xóa Hết")
-        self.btn_clear.setObjectName("btn_subtle")
-        self.btn_clear.clicked.connect(self.clear_file_list)
+        self.btn_delete_selected = QPushButton("Xóa hàng đã chọn")
+        self.btn_delete_selected.setObjectName("btn_subtle")
+        self.btn_delete_selected.setEnabled(False)
+        self.btn_delete_selected.clicked.connect(self.delete_selected_row)
 
-        btn_box.addWidget(self.btn_select_files)
-        btn_box.addWidget(self.btn_select_folder)
-        btn_box.addWidget(self.btn_clear)
-        left_layout.addLayout(btn_box)
+        source_box.addStretch()
+        source_box.addWidget(self.btn_select_files)
+        source_box.addWidget(self.btn_select_folder)
+        left_layout.addLayout(source_box)
 
         # Tên thư mục của một lượt xử lý độc lập
         name_box = QHBoxLayout()
@@ -319,7 +322,6 @@ class WatermarkTab(QWidget):
         self.edit_output_name.setVisible(False)
         name_box.addWidget(self.lbl_output_name)
         name_box.addWidget(self.edit_output_name, stretch=1)
-        left_layout.addLayout(name_box)
 
         # Cấu hình thư mục gốc lưu file
         out_box = QHBoxLayout()
@@ -347,24 +349,57 @@ class WatermarkTab(QWidget):
         self.btn_custom_out.setObjectName("btn_subtle")
         self.btn_custom_out.clicked.connect(self.choose_output_folder)
 
+        self.btn_open_folder = QPushButton("Mở thư mục ảnh")
+        self.btn_open_folder.setObjectName("btn_subtle")
+        self.btn_open_folder.clicked.connect(self.open_output_dir)
+
         out_box.addWidget(self.lbl_project_badge)
         out_box.addWidget(self.lbl_output_location)
         out_box.addWidget(self.lbl_output_path, stretch=1)
         out_box.addWidget(self.chk_custom_out)
         out_box.addWidget(self.btn_custom_out)
-        left_layout.addLayout(out_box)
+        out_box.addWidget(self.btn_open_folder)
+
+        # Header bảng và thao tác theo danh sách
+        list_box = QHBoxLayout()
+        list_box.setSpacing(8)
+        lbl_list_title = QLabel("Danh sách ảnh")
+        lbl_list_title.setProperty("class", "section_label")
+        self.lbl_file_count = QLabel("0 ảnh")
+        self.lbl_file_count.setObjectName("meta_label")
+        self.btn_list_menu = QPushButton("•••")
+        self.btn_list_menu.setObjectName("btn_icon")
+        self.btn_list_menu.setFixedWidth(38)
+        self.action_clear = QAction("Xóa hết", self)
+        self.action_clear.triggered.connect(self.clear_file_list)
+        list_menu = QMenu(self.btn_list_menu)
+        list_menu.addAction(self.action_clear)
+        self.btn_list_menu.setMenu(list_menu)
+
+        list_box.addWidget(lbl_list_title)
+        list_box.addWidget(self.lbl_file_count)
+        list_box.addStretch()
+        list_box.addWidget(self.btn_delete_selected)
+        list_box.addWidget(self.btn_list_menu)
+        left_layout.addLayout(list_box)
 
         # Bảng danh sách file
         self.table = QTableWidget()
         self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["Tên File", "Trạng Thái", "Thời Gian"])
+        self.table.setHorizontalHeaderLabels(["Tên File", "Trạng Thái", "Kết quả"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.cellClicked.connect(self.on_table_row_clicked)
+        self.table.itemSelectionChanged.connect(self.update_delete_selected_button)
         left_layout.addWidget(self.table)
+
+        # Các thao tác đầu ra được đặt cùng nhau, ngay dưới danh sách file.
+        left_layout.addLayout(name_box)
+        left_layout.addLayout(out_box)
 
         # Thanh thực thi
         action_box = QHBoxLayout()
@@ -379,13 +414,8 @@ class WatermarkTab(QWidget):
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.clicked.connect(self.cancel_processing)
 
-        self.btn_open_folder = QPushButton("Mở thư mục ảnh")
-        self.btn_open_folder.setObjectName("btn_subtle")
-        self.btn_open_folder.clicked.connect(self.open_output_dir)
-
         action_box.addWidget(self.btn_start, stretch=2)
         action_box.addWidget(self.btn_cancel)
-        action_box.addWidget(self.btn_open_folder)
         left_layout.addLayout(action_box)
 
         # Progress bar
@@ -489,6 +519,7 @@ class WatermarkTab(QWidget):
                 self.table.setItem(row, 2, QTableWidgetItem("-"))
 
         self.status_lbl.setText(f"Đã nạp {len(self.selected_files)} ảnh.")
+        self._update_file_count()
         if self.selected_files:
             self.current_preview_row = 0
             self.display_image_preview(self.selected_files[0], self.lbl_preview_orig)
@@ -505,6 +536,48 @@ class WatermarkTab(QWidget):
         self.preview_tabs.setCurrentIndex(0)
         self.status_lbl.setText("Danh sách trống.")
         self.progress_bar.setValue(0)
+        self._update_file_count()
+        self._save_standalone_state()
+        self.images_updated.emit()
+
+    def update_delete_selected_button(self):
+        has_selection = bool(self.table.selectionModel().selectedRows())
+        self.btn_delete_selected.setEnabled(has_selection and self.table.isEnabled())
+
+    def _update_file_count(self):
+        self.lbl_file_count.setText(f"{len(self.selected_files)} ảnh")
+
+    def set_file_list_controls_enabled(self, enabled: bool):
+        self.drop_area.setEnabled(enabled)
+        self.btn_select_files.setEnabled(enabled)
+        self.btn_select_folder.setEnabled(enabled)
+        self.action_clear.setEnabled(enabled)
+        self.btn_list_menu.setEnabled(enabled)
+        self.table.setEnabled(enabled)
+        self.update_delete_selected_button()
+
+    def delete_selected_row(self):
+        row = self.table.currentRow()
+        if not 0 <= row < len(self.selected_files):
+            return
+
+        self.selected_files.pop(row)
+        self.table.removeRow(row)
+        self._update_file_count()
+
+        if self.selected_files:
+            next_row = min(row, len(self.selected_files) - 1)
+            self.table.selectRow(next_row)
+            self.on_table_row_clicked(next_row, 0)
+            self.status_lbl.setText(f"Còn {len(self.selected_files)} ảnh trong danh sách.")
+        else:
+            self.lbl_preview_orig.setText("Chưa chọn ảnh")
+            self.lbl_preview_clean.setText("Chưa có kết quả")
+            self.current_preview_row = 0
+            self.preview_tabs.setCurrentIndex(0)
+            self.status_lbl.setText("Danh sách trống.")
+            self.update_delete_selected_button()
+
         self._save_standalone_state()
         self.images_updated.emit()
 
@@ -562,6 +635,7 @@ class WatermarkTab(QWidget):
 
         self.btn_start.setEnabled(False)
         self.btn_cancel.setEnabled(True)
+        self.set_file_list_controls_enabled(False)
         self.progress_bar.setValue(0)
         self.status_lbl.setText("Đang chuẩn bị...")
 
@@ -594,6 +668,7 @@ class WatermarkTab(QWidget):
     def on_finished_all(self, total: int, success_count: int):
         self.btn_start.setEnabled(True)
         self.btn_cancel.setEnabled(False)
+        self.set_file_list_controls_enabled(True)
         if self.standalone_store:
             self.edit_output_name.setEnabled(True)
             self.btn_custom_out.setEnabled(True)

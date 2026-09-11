@@ -160,7 +160,8 @@ class TTSTab(QWidget):
         self.tool_header.setVisible(True)
         self.lbl_project_badge.setVisible(False)
         self.btn_to_video.setVisible(False)
-        self.output_controls.setVisible(True)
+        self.output_name_controls.setVisible(True)
+        self.btn_choose_output.setVisible(True)
         self.edit_output_name.setText(
             build_output_folder_name("voice", day_first=True)
         )
@@ -287,10 +288,16 @@ class TTSTab(QWidget):
         if hasattr(self, "lbl_project_badge"):
             if project:
                 self.lbl_project_badge.setVisible(False)
+                self.lbl_output_path.setText(str(project.voice_dir))
+                self.lbl_output_path.setToolTip(str(project.voice_dir))
+                self.output_name_controls.setVisible(False)
+                self.btn_choose_output.setVisible(False)
             else:
                 self.lbl_project_badge.setText("📁 Chưa chọn dự án")
                 self.lbl_project_badge.setStyleSheet("color: #6b7280; font-size: 11px;")
                 self.lbl_project_badge.setVisible(True)
+                if not self.standalone_store:
+                    self._update_output_path_label()
 
         # Nạp lại dữ liệu đã lưu của dự án
         if project:
@@ -403,7 +410,7 @@ class TTSTab(QWidget):
         cp_layout.setContentsMargins(12, 10, 12, 10)
         cp_layout.setSpacing(8)
 
-        # Dòng 1: Provider & Voice ID & Model & Ngôn ngữ
+        # Dòng 1: Nền tảng, model và ngôn ngữ
         row1 = QHBoxLayout()
         row1.setSpacing(8)
 
@@ -414,14 +421,6 @@ class TTSTab(QWidget):
         self.combo_provider.addItem("🤖 MiniMax", "minimax")
         self.combo_provider.addItem("🎬 CapCut", "capcut")
         self.combo_provider.currentIndexChanged.connect(self.on_provider_changed)
-
-        lbl_vid = QLabel("Voice ID:")
-        lbl_vid.setProperty("class", "section_label")
-        self.edit_voice_id = QLineEdit(config.DEFAULT_VIBI_VOICE_ID)
-        self.edit_voice_id.setPlaceholderText("ID giọng nói...")
-
-        self.btn_browse = QPushButton("🔍 Tra cứu Voice...")
-        self.btn_browse.clicked.connect(self.open_voice_lookup)
 
         lbl_m = QLabel("Model:")
         lbl_m.setProperty("class", "section_label")
@@ -436,17 +435,28 @@ class TTSTab(QWidget):
         row1.addWidget(lbl_prov)
         row1.addWidget(self.combo_provider)
         row1.addSpacing(6)
-        row1.addWidget(lbl_vid)
-        row1.addWidget(self.edit_voice_id, stretch=2)
-        row1.addWidget(self.btn_browse)
-        row1.addSpacing(6)
         row1.addWidget(lbl_m)
-        row1.addWidget(self.combo_model)
+        row1.addWidget(self.combo_model, stretch=2)
         row1.addWidget(lbl_l)
         row1.addWidget(self.combo_lang)
         cp_layout.addLayout(row1)
 
-        # Dòng 2: Sliders & Phụ đề
+        # Dòng 2: Voice ID và thao tác tra cứu
+        voice_row = QHBoxLayout()
+        voice_row.setSpacing(8)
+        lbl_vid = QLabel("Voice ID:")
+        lbl_vid.setProperty("class", "section_label")
+        self.edit_voice_id = QLineEdit(config.DEFAULT_VIBI_VOICE_ID)
+        self.edit_voice_id.setPlaceholderText("ID giọng nói...")
+        self.btn_browse = QPushButton("🔍 Tra cứu Voice...")
+        self.btn_browse.clicked.connect(self.open_voice_lookup)
+
+        voice_row.addWidget(lbl_vid)
+        voice_row.addWidget(self.edit_voice_id, stretch=1)
+        voice_row.addWidget(self.btn_browse)
+        cp_layout.addLayout(voice_row)
+
+        # Dòng 3: Sliders & Phụ đề
         row2 = QHBoxLayout()
         row2.setSpacing(12)
 
@@ -510,12 +520,15 @@ class TTSTab(QWidget):
         output_layout.setContentsMargins(0, 0, 0, 0)
         output_layout.setSpacing(6)
 
-        output_name_row = QHBoxLayout()
+        self.output_name_controls = QWidget()
+        output_name_row = QHBoxLayout(self.output_name_controls)
+        output_name_row.setContentsMargins(0, 0, 0, 0)
         output_name_row.addWidget(QLabel("Tên voice:"))
         self.edit_output_name = QLineEdit()
         self.edit_output_name.setPlaceholderText("voice_DDMMYYYY_HHMMSS")
         output_name_row.addWidget(self.edit_output_name, stretch=1)
-        output_layout.addLayout(output_name_row)
+        self.output_name_controls.setVisible(False)
+        output_layout.addWidget(self.output_name_controls)
 
         output_path_row = QHBoxLayout()
         output_path_row.addWidget(QLabel("Lưu tại:"))
@@ -527,10 +540,15 @@ class TTSTab(QWidget):
         self.btn_choose_output = QPushButton("Thay đổi…")
         self.btn_choose_output.setObjectName("btn_subtle")
         self.btn_choose_output.clicked.connect(self.choose_output_folder)
+        self.btn_choose_output.setVisible(False)
+        self.btn_open_folder = QPushButton("Mở thư mục")
+        self.btn_open_folder.setObjectName("btn_subtle")
+        self.btn_open_folder.clicked.connect(self.open_downloads)
         output_path_row.addWidget(self.lbl_output_path, stretch=1)
         output_path_row.addWidget(self.btn_choose_output)
+        output_path_row.addWidget(self.btn_open_folder)
         output_layout.addLayout(output_path_row)
-        self.output_controls.setVisible(False)
+        self._update_output_path_label()
         tts_layout.addWidget(self.output_controls)
 
         # 3. Thanh thực thi (Action & Progress)
@@ -570,8 +588,6 @@ class TTSTab(QWidget):
         p_info_bar = QHBoxLayout()
         self.lbl_player_file = QLabel("Chưa có file âm thanh")
         self.lbl_player_file.setStyleSheet("color: #9ca3af; font-size: 12px;")
-        self.btn_open_folder = QPushButton("Mở thư mục")
-        self.btn_open_folder.clicked.connect(self.open_downloads)
 
         p_info_bar.addWidget(self.lbl_player_file)
         p_info_bar.addStretch()
@@ -584,8 +600,6 @@ class TTSTab(QWidget):
         self.btn_to_video.setEnabled(False)
         self.btn_to_video.clicked.connect(self._on_to_video_clicked)
         p_info_bar.addWidget(self.btn_to_video)
-
-        p_info_bar.addWidget(self.btn_open_folder)
         pp_layout.addLayout(p_info_bar)
 
         # Scrubber bar

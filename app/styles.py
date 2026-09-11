@@ -508,28 +508,6 @@ QTabBar::tab:hover:!selected {
     background-color: #121316;
 }
 
-#project_inner_tabs::pane {
-    border: 1px solid #232634;
-    border-radius: 8px;
-    background-color: #121316;
-    padding: 4px;
-}
-
-#project_inner_tabs QTabBar::tab {
-    padding: 9px 20px;
-    font-size: 13px;
-    font-weight: 600;
-    border-top-left-radius: 7px;
-    border-top-right-radius: 7px;
-}
-
-#project_inner_tabs QTabBar::tab:selected {
-    background-color: #181a23;
-    color: #38bdf8;
-    border-bottom: 2px solid #38bdf8;
-}
-
-
 /* ================= SPLITTER ================= */
 QSplitter::handle {
     background-color: #1a1b22;
@@ -653,6 +631,15 @@ QSplitter::handle {
     border-bottom: 1px solid #262c38;
 }
 
+#workspace_header #workspace_title {
+    font-size: 17px;
+}
+
+#workspace_header #meta_label {
+    color: #70798a;
+    font-size: 11px;
+}
+
 #btn_back {
     background: transparent;
     border: none;
@@ -663,20 +650,6 @@ QSplitter::handle {
 #btn_back:hover {
     color: #f3f5f7;
     background: transparent;
-}
-
-#breadcrumb_separator {
-    color: #4a5364;
-    font-size: 16px;
-}
-
-#project_meta {
-    background-color: #151922;
-    border: 1px solid #262c38;
-    border-radius: 5px;
-    color: #a7afbe;
-    padding: 4px 8px;
-    font-size: 11px;
 }
 
 #btn_icon {
@@ -769,12 +742,15 @@ QMenu::item:selected {
 
 #project_inner_tabs QTabBar::tab {
     min-width: 150px;
+    min-height: 28px;
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0;
     color: #70798a;
-    padding: 10px 18px;
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
 }
 
 #project_inner_tabs QTabBar::tab:hover {

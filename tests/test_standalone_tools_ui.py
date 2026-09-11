@@ -11,6 +11,8 @@ from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import QApplication, QLabel, QTabWidget
 
 from app.core.standalone_state import StandaloneStateStore
+from app.core.project_manager import Project
+from app.ui.project_workspace import ProjectWorkspace
 from app.ui.tts_tab import TTSTab
 from app.ui.watermark_tab import WatermarkTab
 
@@ -109,6 +111,39 @@ class StandaloneToolsUiTests(unittest.TestCase):
         self.assertEqual(tab.lbl_output_path.text(), str(output_dir))
         self.assertLessEqual(tab.tool_header.maximumHeight(), 72)
 
+    def test_project_workspace_uses_compact_header_and_tab_status(self):
+        project_path = Path(self.temp_dir.name) / "compact-project"
+        project = Project(
+            project_path,
+            {
+                "name": "Nguoi que 2D",
+                "aspect_ratio": "16:9",
+                "fps": 30,
+                "created_at": "2026-09-11T20:00:00",
+                "updated_at": "2026-09-11T21:17:00",
+            },
+        )
+        for index in range(9):
+            (project.clean_images_dir / f"scene-{index}.png").write_bytes(b"image")
+
+        with patch("app.ui.tts_tab.QMediaPlayer", _SilentMediaPlayer), patch(
+            "app.ui.tts_tab.QAudioOutput", _SilentAudioOutput
+        ), patch(
+            "app.ui.voice_lookup_tab.QMediaPlayer", _SilentMediaPlayer
+        ), patch(
+            "app.ui.voice_lookup_tab.QAudioOutput", _SilentAudioOutput
+        ):
+            workspace = ProjectWorkspace()
+            workspace.set_project(project)
+
+            self.assertEqual(
+                workspace.lbl_updated.text(),
+                "16:9 · 30 FPS · Đã lưu 11/09/2026 lúc 21:17",
+            )
+            self.assertEqual(workspace.inner_tabs.tabText(0), "1  Ảnh (9) ✓")
+            workspace.action_auto_save.setChecked(True)
+            self.assertTrue(workspace.tts_tab.auto_save)
+
     def test_watermark_preview_switches_from_before_to_after_when_result_arrives(self):
         source = Path(self.temp_dir.name) / "flow.png"
         cleaned = Path(self.temp_dir.name) / "flow_cleaned.png"
@@ -133,6 +168,31 @@ class StandaloneToolsUiTests(unittest.TestCase):
 
         self.assertEqual(preview_tabs.currentIndex(), 1)
         self.assertIsNotNone(tab.lbl_preview_clean.pixmap())
+
+    def test_watermark_delete_selected_row_updates_list_and_saved_state(self):
+        first = Path(self.temp_dir.name) / "first.png"
+        second = Path(self.temp_dir.name) / "second.png"
+        first.write_bytes(b"not-a-real-image")
+        second.write_bytes(b"not-a-real-image")
+        output_dir = Path(self.temp_dir.name) / "watermark"
+        output_dir.mkdir()
+
+        tab = WatermarkTab()
+        tab.configure_standalone(self.store, output_dir)
+        tab.on_files_selected([first, second])
+
+        self.assertFalse(tab.btn_delete_selected.isEnabled())
+        tab.table.selectRow(1)
+        self.assertTrue(tab.btn_delete_selected.isEnabled())
+
+        tab.btn_delete_selected.click()
+
+        self.assertEqual(tab.selected_files, [first])
+        self.assertEqual(tab.table.rowCount(), 1)
+        self.assertEqual(tab.lbl_file_count.text(), "1 ảnh")
+        self.assertEqual(self.store.load_watermark()["files"], [first])
+        self.assertEqual(tab.table.currentRow(), 0)
+        self.assertTrue(tab.btn_delete_selected.isEnabled())
 
     def test_tts_sidebar_mode_restores_configuration_without_project(self):
         output_dir = Path(self.temp_dir.name) / "tts"
@@ -186,6 +246,7 @@ class StandaloneToolsUiTests(unittest.TestCase):
             )
             self.assertEqual(tab.lbl_output_path.text(), str(output_dir))
             self.assertTrue(tab.btn_choose_output.isEnabled())
+            self.assertIs(tab.btn_open_folder.parentWidget(), tab.output_controls)
             self.assertLessEqual(tab.tool_header.maximumHeight(), 72)
 
     def test_tts_sidebar_mode_flushes_pending_text_before_close(self):
@@ -280,18 +341,25 @@ class StandaloneToolsUiTests(unittest.TestCase):
             tab = WatermarkTab()
             tab.configure_standalone(self.store, output_dir)
             tab.on_files_selected([source])
+            tab.table.selectRow(0)
             tab.edit_output_name.setText("clean_retry")
 
             tab.start_processing()
             run_dir = output_dir / "clean_retry"
             self.assertTrue(run_dir.is_dir())
             self.assertFalse(tab.edit_output_name.isEnabled())
+            self.assertFalse(tab.table.isEnabled())
+            self.assertFalse(tab.btn_delete_selected.isEnabled())
+            self.assertFalse(tab.action_clear.isEnabled())
 
             tab.on_finished_all(1, 0)
 
             self.assertFalse(run_dir.exists())
             self.assertEqual(tab.edit_output_name.text(), "clean_retry")
             self.assertTrue(tab.edit_output_name.isEnabled())
+            self.assertTrue(tab.table.isEnabled())
+            self.assertTrue(tab.btn_delete_selected.isEnabled())
+            self.assertTrue(tab.action_clear.isEnabled())
 
 
 if __name__ == "__main__":
