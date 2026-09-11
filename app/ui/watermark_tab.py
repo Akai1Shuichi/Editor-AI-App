@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QProgressBar, QTableWidget, QTableWidgetItem,
     QHeaderView, QCheckBox, QFrame, QMessageBox, QLineEdit, QSizePolicy,
-    QSplitter
+    QSplitter, QTabWidget
 )
 
 from app.core.watermark_remover import GeminiWatermarkRemover
@@ -139,6 +139,7 @@ class WatermarkTab(QWidget):
         self.project = None
         self.standalone_store: Optional[StandaloneStateStore] = None
         self.current_run_dir: Optional[Path] = None
+        self.current_preview_row = 0
         self.init_ui()
 
     def configure_standalone(
@@ -406,24 +407,25 @@ class WatermarkTab(QWidget):
         right_layout.setContentsMargins(8, 0, 0, 0)
         right_layout.setSpacing(8)
 
-        lbl_p1 = QLabel("Ảnh gốc (Trước khi xử lý):")
-        lbl_p1.setProperty("class", "section_label")
+        preview_title = QLabel("So sánh kết quả")
+        preview_title.setProperty("class", "section_label")
+
+        self.preview_tabs = QTabWidget()
+        self.preview_tabs.setObjectName("watermark_preview_tabs")
         self.lbl_preview_orig = QLabel("Chưa chọn ảnh")
         self.lbl_preview_orig.setObjectName("preview_box")
         self.lbl_preview_orig.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_preview_orig.setStyleSheet("color: #6b7280; min-height: 200px;")
 
-        lbl_p2 = QLabel("Kết quả sạch (Đã gỡ watermark):")
-        lbl_p2.setProperty("class", "section_label")
         self.lbl_preview_clean = QLabel("Chưa có kết quả")
         self.lbl_preview_clean.setObjectName("preview_box")
         self.lbl_preview_clean.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_preview_clean.setStyleSheet("color: #6b7280; min-height: 200px;")
 
-        right_layout.addWidget(lbl_p1)
-        right_layout.addWidget(self.lbl_preview_orig, stretch=1)
-        right_layout.addWidget(lbl_p2)
-        right_layout.addWidget(self.lbl_preview_clean, stretch=1)
+        self.preview_tabs.addTab(self.lbl_preview_orig, "Trước")
+        self.preview_tabs.addTab(self.lbl_preview_clean, "Sau")
+        right_layout.addWidget(preview_title)
+        right_layout.addWidget(self.preview_tabs, stretch=1)
 
         splitter.addWidget(right_box)
         splitter.setSizes([600, 360])
@@ -488,7 +490,9 @@ class WatermarkTab(QWidget):
 
         self.status_lbl.setText(f"Đã nạp {len(self.selected_files)} ảnh.")
         if self.selected_files:
+            self.current_preview_row = 0
             self.display_image_preview(self.selected_files[0], self.lbl_preview_orig)
+            self.preview_tabs.setCurrentIndex(0)
         self._save_standalone_state()
         self.images_updated.emit()
 
@@ -497,6 +501,8 @@ class WatermarkTab(QWidget):
         self.table.setRowCount(0)
         self.lbl_preview_orig.setText("Chưa chọn ảnh")
         self.lbl_preview_clean.setText("Chưa có kết quả")
+        self.current_preview_row = 0
+        self.preview_tabs.setCurrentIndex(0)
         self.status_lbl.setText("Danh sách trống.")
         self.progress_bar.setValue(0)
         self._save_standalone_state()
@@ -515,8 +521,10 @@ class WatermarkTab(QWidget):
 
     def on_table_row_clicked(self, row: int, col: int):
         if 0 <= row < len(self.selected_files):
+            self.current_preview_row = row
             orig_p = self.selected_files[row]
             self.display_image_preview(orig_p, self.lbl_preview_orig)
+            self.preview_tabs.setCurrentIndex(0)
 
             # Nếu ảnh đã là ảnh sạch hoặc có file sạch tương ứng
             if "_cleaned" in orig_p.stem or (self.project and orig_p.parent == self.project.clean_images_dir):
@@ -577,6 +585,11 @@ class WatermarkTab(QWidget):
             self.table.setItem(row, 2, QTableWidgetItem(msg))
 
         self.status_lbl.setText(f"Đang xử lý ({current}/{total}): {filename}")
+        if success and row == self.current_preview_row:
+            clean_path = Path(msg)
+            if clean_path.exists():
+                self.display_image_preview(clean_path, self.lbl_preview_clean)
+                self.preview_tabs.setCurrentIndex(1)
 
     def on_finished_all(self, total: int, success_count: int):
         self.btn_start.setEnabled(True)

@@ -7,7 +7,8 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QObject, QSettings, pyqtSignal
-from PyQt6.QtWidgets import QApplication, QLabel
+from PyQt6.QtGui import QImage
+from PyQt6.QtWidgets import QApplication, QLabel, QTabWidget
 
 from app.core.standalone_state import StandaloneStateStore
 from app.ui.tts_tab import TTSTab
@@ -107,6 +108,31 @@ class StandaloneToolsUiTests(unittest.TestCase):
         self.assertRegex(tab.edit_output_name.text(), r"^clean_\d{8}_\d{6}$")
         self.assertEqual(tab.lbl_output_path.text(), str(output_dir))
         self.assertLessEqual(tab.tool_header.maximumHeight(), 72)
+
+    def test_watermark_preview_switches_from_before_to_after_when_result_arrives(self):
+        source = Path(self.temp_dir.name) / "flow.png"
+        cleaned = Path(self.temp_dir.name) / "flow_cleaned.png"
+        before_image = QImage(24, 24, QImage.Format.Format_RGB32)
+        before_image.fill(0xAA0000)
+        self.assertTrue(before_image.save(str(source)))
+        after_image = QImage(24, 24, QImage.Format.Format_RGB32)
+        after_image.fill(0x00AA00)
+        self.assertTrue(after_image.save(str(cleaned)))
+
+        tab = WatermarkTab()
+        tab.on_files_selected([source])
+
+        preview_tabs = tab.findChild(QTabWidget, "watermark_preview_tabs")
+        self.assertIsNotNone(preview_tabs)
+        self.assertEqual(preview_tabs.count(), 2)
+        self.assertEqual(preview_tabs.tabText(0), "Trước")
+        self.assertEqual(preview_tabs.tabText(1), "Sau")
+        self.assertEqual(preview_tabs.currentIndex(), 0)
+
+        tab.on_file_processed(1, 1, source.name, True, str(cleaned))
+
+        self.assertEqual(preview_tabs.currentIndex(), 1)
+        self.assertIsNotNone(tab.lbl_preview_clean.pixmap())
 
     def test_tts_sidebar_mode_restores_configuration_without_project(self):
         output_dir = Path(self.temp_dir.name) / "tts"
