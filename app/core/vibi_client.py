@@ -97,7 +97,7 @@ class VibiClient:
         if gender and gender.lower() != "all":
             params["gender"] = gender
         if language and language.lower() != "all":
-            params["language"] = language
+            params["required_languages"] = language
 
         try:
             res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
@@ -105,6 +105,119 @@ class VibiClient:
             return res.json()
         except requests.RequestException as e:
             raise VibiAPIError(f"Lỗi khi tra cứu thư viện giọng shared: {e}")
+
+    def list_minimax_system_voices(
+        self,
+        search: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 30,
+        gender: Optional[str] = None,
+        language: Optional[str] = None,
+        accent: Optional[str] = None,
+        age: Optional[str] = None,
+        use_cases: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Tìm kiếm thư viện giọng hệ thống MiniMax (GET /v1/minimax/system-voices)."""
+        url = f"{self.base_url}/v1/minimax/system-voices"
+        params: Dict[str, Any] = {
+            "page": page,
+            "page_size": page_size,
+        }
+        if search:
+            params["search"] = search
+        if gender and gender.lower() != "all":
+            params["gender"] = gender.capitalize()
+        if language and language.lower() != "all":
+            params["language"] = language
+        if accent and accent.lower() != "all":
+            params["accent"] = accent
+        if age and age.lower() != "all":
+            params["age"] = age
+        if use_cases and use_cases.lower() != "all":
+            params["use_cases"] = use_cases
+
+        try:
+            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res.raise_for_status()
+            return res.json()
+        except requests.RequestException as e:
+            raise VibiAPIError(f"Lỗi khi tra cứu giọng MiniMax: {e}")
+
+    def list_minimax_cloned_voices(self) -> List[Dict[str, Any]]:
+        """Lấy danh sách các giọng MiniMax đã clone của người dùng (GET /v1/minimax/voices)."""
+        url = f"{self.base_url}/v1/minimax/voices"
+        try:
+            res = self.session.get(url, headers=self._get_headers(), timeout=15)
+            res.raise_for_status()
+            data = res.json()
+            return data.get("voices", [])
+        except requests.RequestException as e:
+            raise VibiAPIError(f"Lỗi khi lấy danh sách giọng MiniMax cloned: {e}")
+
+    def list_capcut_system_voices(
+        self,
+        search: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 30,
+        language: Optional[str] = None,
+        gender: Optional[str] = None,
+        age: Optional[str] = None,
+        emotion: Optional[str] = None,
+        accent: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Tìm kiếm thư viện giọng hệ thống CapCut (GET /v1/capcut/system-voices)."""
+        url = f"{self.base_url}/v1/capcut/system-voices"
+        params: Dict[str, Any] = {
+            "page": page,
+            "page_size": page_size,
+        }
+        if search:
+            params["search"] = search
+        if language and language.lower() != "all":
+            params["language"] = language
+        if gender and gender.lower() != "all":
+            params["gender"] = gender.capitalize()
+        if age and age.lower() != "all":
+            params["age"] = age
+        if emotion and emotion.lower() != "all":
+            params["emotion"] = emotion
+        if accent and accent.lower() != "all":
+            params["accent"] = accent
+
+        try:
+            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res.raise_for_status()
+            return res.json()
+        except requests.RequestException as e:
+            raise VibiAPIError(f"Lỗi khi tra cứu giọng CapCut: {e}")
+
+    def list_community_voices(
+        self,
+        search: Optional[str] = None,
+        limit: int = 30,
+        offset: int = 0,
+        gender: Optional[str] = None,
+        language: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Lấy danh sách giọng cộng đồng Vibi (GET /v1/community/voices)."""
+        url = f"{self.base_url}/v1/community/voices"
+        params: Dict[str, Any] = {
+            "limit": limit,
+            "offset": offset,
+        }
+        if search:
+            params["search"] = search
+        if gender and gender.lower() != "all":
+            params["gender"] = gender.lower()
+        if language and language.lower() != "all":
+            params["language"] = language.lower()
+
+        try:
+            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res.raise_for_status()
+            return res.json()
+        except requests.RequestException as e:
+            raise VibiAPIError(f"Lỗi khi tra cứu giọng cộng đồng: {e}")
 
     def create_tts_task(
         self,
@@ -120,12 +233,24 @@ class VibiClient:
         url = f"{self.base_url}/v1/text-to-speech/{voice_id}"
 
         if voice_settings is None:
-            voice_settings = {
-                "stability": config.DEFAULT_VIBI_STABILITY,
-                "similarity_boost": config.DEFAULT_VIBI_SIMILARITY,
-                "speed": config.DEFAULT_VIBI_SPEED,
-                "use_speaker_boost": True
-            }
+            if provider == "minimax":
+                voice_settings = {
+                    "speed": 1.0,
+                    "pitch": 0,
+                    "vol": 1.0
+                }
+            elif provider == "capcut":
+                voice_settings = {
+                    "speed": 1.0,
+                    "pitch": 0
+                }
+            else:
+                voice_settings = {
+                    "stability": config.DEFAULT_VIBI_STABILITY,
+                    "similarity_boost": config.DEFAULT_VIBI_SIMILARITY,
+                    "speed": config.DEFAULT_VIBI_SPEED,
+                    "use_speaker_boost": True
+                }
 
         payload = {
             "text": text,
@@ -212,6 +337,7 @@ class VibiClient:
         output_dir: Optional[Path] = None,
         model_id: str = "eleven_v3",
         language_code: str = "vi",
+        provider: str = "elevenlabs",
         voice_settings: Optional[Dict[str, Any]] = None,
         export_transcript: bool = False,
         progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
@@ -226,7 +352,7 @@ class VibiClient:
             text=text,
             model_id=model_id,
             language_code=language_code,
-            provider="elevenlabs",
+            provider=provider,
             voice_settings=voice_settings,
             export_transcript=export_transcript
         )

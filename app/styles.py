@@ -448,6 +448,51 @@ QSplitter::handle {
     width: 1px;
     height: 1px;
 }
+
+/* ================= PAGINATION BAR ================= */
+#pagination_bar {
+    background-color: #15161d;
+    border: 1px solid #23252f;
+    border-radius: 8px;
+}
+
+#pagination_bar QPushButton {
+    background-color: #1a1c25;
+    border: 1px solid #2b2e3c;
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #cbd5e1;
+    min-height: 26px;
+}
+
+#pagination_bar QPushButton:hover {
+    background-color: #262937;
+    border-color: #3b82f6;
+    color: #ffffff;
+}
+
+#pagination_bar QPushButton:disabled {
+    background-color: #121318;
+    border-color: #1e2029;
+    color: #4b5563;
+}
+
+#pagination_bar QComboBox {
+    background-color: #1a1c25;
+    border: 1px solid #2b2e3c;
+    border-radius: 5px;
+    padding: 2px 8px;
+    font-size: 12px;
+    color: #cbd5e1;
+    min-height: 26px;
+}
+
+#pagination_bar QLabel {
+    font-size: 12px;
+    color: #94a3b8;
+}
 """
 
 def setup_theme(app: QApplication):

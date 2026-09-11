@@ -141,7 +141,7 @@ class MainWindow(QMainWindow):
 
         titles = [
             "Gỡ Watermark Gemini / Imagen",
-            "Tạo Giọng Nói ElevenLabs & Thư Viện Voice (TTS)",
+            "Tạo Giọng Nói Đa Nền Tảng (ElevenLabs, MiniMax, CapCut) & Thư Viện Voice",
             "Cài Đặt & Quản Lý Tài Khoản Voice API"
         ]
         if 0 <= index < len(titles):
