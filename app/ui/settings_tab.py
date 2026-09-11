@@ -143,7 +143,7 @@ class SettingsTab(QWidget):
         r1 = QHBoxLayout()
         lbl_def_v = QLabel("Voice ID mặc định:")
         lbl_def_v.setProperty("class", "section_label")
-        lbl_def_v.setFixedWidth(140)
+        lbl_def_v.setFixedWidth(160)
         self.edit_def_voice = QLineEdit(config.DEFAULT_VIBI_VOICE_ID)
         r1.addWidget(lbl_def_v)
         r1.addWidget(self.edit_def_voice)
@@ -153,7 +153,7 @@ class SettingsTab(QWidget):
         r2 = QHBoxLayout()
         lbl_def_m = QLabel("Model mặc định:")
         lbl_def_m.setProperty("class", "section_label")
-        lbl_def_m.setFixedWidth(140)
+        lbl_def_m.setFixedWidth(160)
         self.combo_def_model = QComboBox()
         self.combo_def_model.addItems(["eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5"])
         self.combo_def_model.setCurrentText(config.DEFAULT_VIBI_MODEL)
@@ -171,20 +171,20 @@ class SettingsTab(QWidget):
         r2.addWidget(self.combo_def_lang, stretch=1)
         pp_layout.addLayout(r2)
 
-        # Thư mục lưu Downloads
+        # Đường dẫn lưu Projects
         r3 = QHBoxLayout()
-        lbl_dir = QLabel("Thư mục lưu file:")
+        lbl_dir = QLabel("Đường dẫn lưu Projects:")
         lbl_dir.setProperty("class", "section_label")
-        lbl_dir.setFixedWidth(140)
+        lbl_dir.setFixedWidth(160)
 
-        self.lbl_dir_path = QLabel(str(config.DOWNLOADS_DIR))
+        self.lbl_dir_path = QLabel(str(config.PROJECTS_DIR))
         self.lbl_dir_path.setStyleSheet("color: #60a5fa; font-size: 12px;")
 
         self.btn_change_dir = QPushButton("Thay đổi...")
-        self.btn_change_dir.clicked.connect(self.change_downloads_dir)
+        self.btn_change_dir.clicked.connect(self.change_projects_dir)
 
         self.btn_open_dir = QPushButton("Mở")
-        self.btn_open_dir.clicked.connect(self.open_downloads_dir)
+        self.btn_open_dir.clicked.connect(self.open_projects_dir)
 
         r3.addWidget(lbl_dir)
         r3.addWidget(self.lbl_dir_path, stretch=1)
@@ -254,15 +254,21 @@ class SettingsTab(QWidget):
             self.lbl_credits.setStyleSheet("font-size: 13px; font-weight: 600; color: #f87171;")
             QMessageBox.critical(self, "Lỗi kiểm tra", error_msg)
 
-    def change_downloads_dir(self):
-        folder = QFileDialog.getExistingDirectory(self, "Chọn thư mục lưu Downloads", str(config.DOWNLOADS_DIR))
+    def change_projects_dir(self):
+        """Cho phép user chọn thư mục lưu projects mới."""
+        folder = QFileDialog.getExistingDirectory(
+            self, "Chọn đường dẫn lưu Projects", str(config.PROJECTS_DIR)
+        )
         if folder:
             p = Path(folder)
-            config.DOWNLOADS_DIR = p
+            p.mkdir(parents=True, exist_ok=True)
+            config.PROJECTS_DIR = p
+            config.save_env_variable("PROJECTS_DIR", str(p))
             self.lbl_dir_path.setText(str(p))
 
-    def open_downloads_dir(self):
-        target = config.DOWNLOADS_DIR
+    def open_projects_dir(self):
+        """Mở thư mục chứa projects trong File Explorer."""
+        target = config.PROJECTS_DIR
         try:
             if sys.platform.startswith("win"):
                 os.startfile(str(target))

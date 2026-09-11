@@ -1,4 +1,5 @@
 import os
+import platform
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -6,12 +7,44 @@ from dotenv import load_dotenv
 APP_DIR = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = APP_DIR / "downloads"
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
-PROJECTS_DIR = APP_DIR / "projects"
-PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Thư mục chứa các dự án — đặt trên Desktop của user (cross-platform)
+def _get_projects_dir() -> Path:
+    """Xác định đường dẫn chứa projects trên Desktop theo từng hệ điều hành."""
+    home = Path.home()
+    system = platform.system()
+
+    if system == "Windows":
+        # Windows: C:\Users\<user>\Desktop
+        desktop = home / "Desktop"
+    elif system == "Darwin":
+        # macOS: /Users/<user>/Desktop
+        desktop = home / "Desktop"
+    else:
+        # Linux: /home/<user>/Desktop (nếu có)
+        desktop = home / "Desktop"
+
+    # Nếu Desktop tồn tại, tạo thư mục projects trên Desktop
+    if desktop.exists():
+        projects = desktop / "Editor-AI-Projects"
+    else:
+        # Fallback: đặt trong thư mục home nếu Desktop không tồn tại
+        projects = home / "Editor-AI-Projects"
+
+    projects.mkdir(parents=True, exist_ok=True)
+    return projects
+
+PROJECTS_DIR = _get_projects_dir()
 
 ENV_FILE = APP_DIR / ".env"
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE)
+
+# Nếu user đã cấu hình đường dẫn Projects tùy chỉnh trong .env, ưu tiên dùng nó
+_custom_projects = os.getenv("PROJECTS_DIR", "")
+if _custom_projects:
+    PROJECTS_DIR = Path(_custom_projects)
+    PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 
 ACTIVE_PROJECT = os.getenv("ACTIVE_PROJECT", "")
 
@@ -27,9 +60,16 @@ DEFAULT_VIBI_SPEED = float(os.getenv("DEFAULT_VIBI_SPEED", "1.0"))
 
 def reload_config():
     global VIBI_API_BASE, VIBI_API_KEY, DEFAULT_VIBI_MODEL, DEFAULT_VIBI_LANGUAGE, DEFAULT_VIBI_VOICE_ID
-    global DEFAULT_VIBI_STABILITY, DEFAULT_VIBI_SIMILARITY, DEFAULT_VIBI_SPEED, ACTIVE_PROJECT
+    global DEFAULT_VIBI_STABILITY, DEFAULT_VIBI_SIMILARITY, DEFAULT_VIBI_SPEED, ACTIVE_PROJECT, PROJECTS_DIR
     if ENV_FILE.exists():
         load_dotenv(ENV_FILE, override=True)
+    # Reload đường dẫn Projects
+    _custom = os.getenv("PROJECTS_DIR", "")
+    if _custom:
+        PROJECTS_DIR = Path(_custom)
+        PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+    else:
+        PROJECTS_DIR = _get_projects_dir()
     ACTIVE_PROJECT = os.getenv("ACTIVE_PROJECT", "")
     VIBI_API_BASE = os.getenv("VIBI_API_BASE", "https://api.vibi.pro")
     VIBI_API_KEY = os.getenv("VIBI_API_KEY", "")
