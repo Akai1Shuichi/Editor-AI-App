@@ -362,56 +362,84 @@ class VideoTab(QWidget):
 
     # ================= TỰ ĐỘNG PHÁT HIỆN & BROWSE =================
     def auto_detect_defaults(self):
-        """Tự động tìm kiếm các asset mới nhất trong downloads/, images/ hoặc workspace."""
-        base_dir = config.APP_DIR
-        parent_dir = base_dir.parent
+        """Tự động tìm kiếm các asset mới nhất — ưu tiên từ dự án hiện tại."""
         valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
-        # 1. Tìm ảnh (ưu tiên trong downloads/ trước)
-        candidate_img_dirs = [
-            config.DOWNLOADS_DIR / "images" / "clean",
-            config.DOWNLOADS_DIR / "images" / "cleaned",
-            config.DOWNLOADS_DIR / "clean",
-            config.DOWNLOADS_DIR / "cleaned",
-            config.DOWNLOADS_DIR / "images",
-            config.DOWNLOADS_DIR,
-            base_dir / "images" / "clean",
-            base_dir / "images" / "cleaned",
-            base_dir / "images",
-            parent_dir / "evenlabs-voice" / "images" / "clean",
-            parent_dir / "evenlabs-voice" / "images" / "cleaned",
-            parent_dir / "evenlabs-voice" / "images"
-        ]
+        # ========== 1. Tìm ảnh ==========
         found_img_dir = None
-        for p in candidate_img_dirs:
-            if p.exists() and p.is_dir():
-                try:
-                    if any(f.suffix.lower() in valid_exts for f in p.iterdir() if f.is_file()):
-                        found_img_dir = p
-                        break
-                except Exception:
-                    pass
+
+        # Ưu tiên thư mục ảnh của project
+        if self.project:
+            eff = self.project.get_effective_image_dir()
+            if eff.exists() and any(f.suffix.lower() in valid_exts for f in eff.iterdir() if f.is_file()):
+                found_img_dir = eff
+
+        # Fallback: quét các thư mục phổ biến
+        if not found_img_dir:
+            base_dir = config.APP_DIR
+            parent_dir = base_dir.parent
+            candidate_img_dirs = [
+                config.DOWNLOADS_DIR / "images" / "clean",
+                config.DOWNLOADS_DIR / "images",
+                config.DOWNLOADS_DIR,
+                base_dir / "images" / "clean",
+                base_dir / "images",
+            ]
+            for p in candidate_img_dirs:
+                if p.exists() and p.is_dir():
+                    try:
+                        if any(f.suffix.lower() in valid_exts for f in p.iterdir() if f.is_file()):
+                            found_img_dir = p
+                            break
+                    except Exception:
+                        pass
 
         if found_img_dir:
             self.txt_image_dir.setText(str(found_img_dir.resolve()))
         else:
-            self.txt_image_dir.setText(str(config.DOWNLOADS_DIR.resolve()))
+            self.txt_image_dir.setText("")
 
-        # 2. Tìm audio (trong downloads/)
-        candidate_audios = list(config.DOWNLOADS_DIR.glob("*.mp3")) + list(config.DOWNLOADS_DIR.glob("*.wav"))
-        if not candidate_audios:
-            candidate_audios = list((parent_dir / "evenlabs-voice" / "downloads").glob("*.mp3"))
-        if candidate_audios:
-            candidate_audios.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-            self.txt_audio_file.setText(str(candidate_audios[0].resolve()))
+        # ========== 2. Tìm audio (voice mp3/wav) ==========
+        found_audio = None
 
-        # 3. Tìm SRT (trong downloads/)
-        candidate_srts = list(config.DOWNLOADS_DIR.glob("*.srt"))
-        if not candidate_srts:
-            candidate_srts = list((parent_dir / "evenlabs-voice" / "downloads").glob("*.srt"))
-        if candidate_srts:
-            candidate_srts.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-            self.txt_srt_file.setText(str(candidate_srts[0].resolve()))
+        # Ưu tiên file voice mới nhất từ project
+        if self.project:
+            voice = self.project.get_latest_voice()
+            if voice:
+                found_audio = voice
+
+        # Fallback: quét downloads
+        if not found_audio:
+            candidate_audios = list(config.DOWNLOADS_DIR.glob("*.mp3")) + list(config.DOWNLOADS_DIR.glob("*.wav"))
+            if candidate_audios:
+                candidate_audios.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+                found_audio = candidate_audios[0]
+
+        if found_audio:
+            self.txt_audio_file.setText(str(found_audio.resolve()))
+        else:
+            self.txt_audio_file.setText("")
+
+        # ========== 3. Tìm SRT ==========
+        found_srt = None
+
+        # Ưu tiên file SRT mới nhất từ project
+        if self.project:
+            srt = self.project.get_latest_srt()
+            if srt:
+                found_srt = srt
+
+        # Fallback: quét downloads
+        if not found_srt:
+            candidate_srts = list(config.DOWNLOADS_DIR.glob("*.srt"))
+            if candidate_srts:
+                candidate_srts.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+                found_srt = candidate_srts[0]
+
+        if found_srt:
+            self.txt_srt_file.setText(str(found_srt.resolve()))
+        else:
+            self.txt_srt_file.setText("")
 
         self.generate_default_output_name()
 

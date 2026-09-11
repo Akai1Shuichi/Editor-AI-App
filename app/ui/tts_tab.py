@@ -584,6 +584,7 @@ class TTSTab(QWidget):
             voice_settings=settings,
             export_srt=self.chk_srt.isChecked(),
             provider=provider,
+            output_filename="voice.mp3",
             output_dir=out_dir
         )
         self.worker.status_updated.connect(self.lbl_status.setText)
@@ -617,8 +618,15 @@ class TTSTab(QWidget):
             self.btn_play_pause.setText("Phát")
             self.btn_to_video.setEnabled(True)
         else:
-            self.lbl_status.setText(f"Lỗi: {msg}")
-            QMessageBox.critical(self, "Lỗi tạo giọng", msg)
+            # Phân biệt hủy vs lỗi thực sự
+            is_cancelled = "hủy" in msg.lower() or "cancelled" in msg.lower()
+            if is_cancelled:
+                self.lbl_status.setText("Đã hủy tác vụ tạo giọng nói.")
+                self.progress_bar.setValue(0)
+            else:
+                self.lbl_status.setText(f"Lỗi: {msg}")
+                self.progress_bar.setValue(0)
+                QMessageBox.critical(self, "Lỗi tạo giọng", msg)
 
     def _on_to_video_clicked(self):
         if self.current_audio_path:

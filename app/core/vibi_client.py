@@ -262,7 +262,7 @@ class VibiClient:
         }
 
         try:
-            res = self.session.post(url, headers=self._get_headers(), json=payload, timeout=25)
+            res = self.session.post(url, headers=self._get_headers(), json=payload, timeout=60)
             if res.status_code in (200, 201, 202):
                 return res.json()
 
@@ -311,7 +311,13 @@ class VibiClient:
                 err = task.get("error") or "Lỗi xử lý tác vụ từ server Voice API"
                 raise VibiAPIError(f"Tác vụ {task_id} thất bại: {err}")
 
-            time.sleep(poll_interval)
+            # Chia nhỏ thời gian chờ để check hủy thường xuyên hơn
+            waited = 0.0
+            while waited < poll_interval:
+                if is_cancelled and is_cancelled():
+                    raise VibiAPIError("Tác vụ đã bị người dùng hủy.")
+                time.sleep(0.2)
+                waited += 0.2
 
         raise VibiAPIError(f"Quá thời gian chờ ({timeout_sec}s) cho tác vụ {task_id}!")
 
