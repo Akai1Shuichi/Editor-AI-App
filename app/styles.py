@@ -40,7 +40,7 @@ QWidget#central_widget, QWidget#content_container {
     background-color: #121316;
 }
 
-#watermark_tab, #tts_tab, #voice_lookup_tab, #video_tab, #project_tab, #settings_tab {
+#watermark_tab, #tts_tab, #voice_lookup_tab, #scene_tab, #video_tab, #project_tab, #settings_tab {
     background-color: #121316;
 }
 

@@ -248,13 +248,6 @@ class ProjectManager:
         _ = project.output_dir
         project.save_metadata()
 
-        # Tạo file scenes.json khởi tạo mẫu nếu chưa có
-        if not project.scenes_path.exists():
-            init_scenes = [
-                {"id": "SC01", "prompt": "Cảnh mở đầu", "subtitles": []}
-            ]
-            project.scenes_path.write_text(json.dumps(init_scenes, ensure_ascii=False, indent=2), encoding="utf-8")
-
         cls.set_active_project(project.slug)
         return project
 

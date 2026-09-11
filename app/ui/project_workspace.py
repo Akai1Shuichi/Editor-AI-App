@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
 
 from app.core.project_manager import Project, ProjectManager
 from app.ui.project_tab import ProjectTab
+from app.ui.scene_tab import SceneTab
 from app.ui.tts_tab import TTSTab
 from app.ui.video_tab import VideoTab
 from app.ui.watermark_tab import WatermarkTab
@@ -121,15 +122,19 @@ class ProjectWorkspace(QWidget):
 
         self.watermark_tab = WatermarkTab()
         self.tts_tab = TTSTab()
+        self.scene_tab = SceneTab()
         self.video_tab = VideoTab()
 
         self.inner_tabs.addTab(self.watermark_tab, "1   Ảnh")
         self.inner_tabs.addTab(self.tts_tab, "2   Giọng nói")
-        self.inner_tabs.addTab(self.video_tab, "3   Xuất video")
+        self.inner_tabs.addTab(self.scene_tab, "3   Kịch bản cảnh")
+        self.inner_tabs.addTab(self.video_tab, "4   Xuất video")
         workspace_layout.addWidget(self.inner_tabs, stretch=1)
         self.stack.addWidget(self.workspace_page)
 
         self.tts_tab.send_to_video.connect(self._on_tts_send_to_video)
+        self.scene_tab.scene_path_changed.connect(self.video_tab.set_json_file)
+        self.scene_tab.continue_to_video.connect(self._on_scene_continue_to_video)
 
     def show_project_list(self, checked=False, force=False):
         """Quay về danh sách; không cho đổi ngữ cảnh khi worker còn chạy."""
@@ -171,17 +176,22 @@ class ProjectWorkspace(QWidget):
         self.watermark_tab.set_project(project)
         self.tts_tab.set_project(project)
         self.video_tab.set_project(project)
+        self.scene_tab.set_project(project)
         self.project_changed.emit(project.slug)
 
     def navigate_to_pipeline_step(self, step_index: int):
         if not self.current_project:
             return
-        self.inner_tabs.setCurrentIndex(max(0, min(2, step_index - 1)))
+        self.inner_tabs.setCurrentIndex(max(0, min(3, step_index - 1)))
         self.stack.setCurrentIndex(self.WORKSPACE_PAGE)
 
     def _on_tts_send_to_video(self, audio_path: str, srt_path: str):
         self.video_tab.set_audio_and_srt(audio_path, srt_path)
         self.inner_tabs.setCurrentIndex(2)
+
+    def _on_scene_continue_to_video(self):
+        self.video_tab.analyze_timeline()
+        self.inner_tabs.setCurrentIndex(3)
 
     def _on_project_deleted(self, slug: str):
         if self.current_project and self.current_project.slug == slug:
@@ -243,6 +253,7 @@ class ProjectWorkspace(QWidget):
         self.current_project = None
         self.watermark_tab.set_project(None)
         self.tts_tab.set_project(None)
+        self.scene_tab.set_project(None)
         self.video_tab.set_project(None)
         self.project_changed.emit("")
 

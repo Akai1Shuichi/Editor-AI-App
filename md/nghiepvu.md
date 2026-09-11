@@ -169,7 +169,7 @@ Xử lý:
 3. Sinh slug không dấu, an toàn cho tên thư mục.
 4. Kiểm tra slug duy nhất.
 5. Tạo cây thư mục.
-6. Ghi project.json và scenes.json khởi tạo.
+6. Ghi project.json; chưa tạo scenes.json cho đến khi người dùng nhập kịch bản dạng text.
 7. Đưa dự án vào danh sách.
 8. Gán làm currentProject và mở workspace.
 

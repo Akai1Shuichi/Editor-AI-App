@@ -354,9 +354,11 @@ class TTSTab(QWidget):
         p_info_bar.addWidget(self.lbl_player_file)
         p_info_bar.addStretch()
 
-        self.btn_to_video = QPushButton("🎬  Ghép Video")
+        self.btn_to_video = QPushButton("→  Kịch Bản Cảnh")
         self.btn_to_video.setObjectName("btn_subtle")
-        self.btn_to_video.setToolTip("Chuyển file Voice & Phụ đề SRT sang tab Ghép Video")
+        self.btn_to_video.setToolTip(
+            "Chuyển file Voice & phụ đề SRT sang bước Kịch bản cảnh trước khi xuất video"
+        )
         self.btn_to_video.setEnabled(False)
         self.btn_to_video.clicked.connect(self._on_to_video_clicked)
         p_info_bar.addWidget(self.btn_to_video)

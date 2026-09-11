@@ -163,20 +163,9 @@ class VideoTab(QWidget):
         box_srt.addWidget(btn_browse_srt)
         in_layout.addLayout(box_srt)
 
-        # 4. File JSON kịch bản
-        lbl_json = QLabel("File JSON kịch bản cảnh (.json):")
-        lbl_json.setProperty("class", "section_label")
-        in_layout.addWidget(lbl_json)
-        box_json = QHBoxLayout()
-        box_json.setSpacing(6)
+        # Đường dẫn JSON được quản lý ở bước 3 và chỉ giữ nội bộ tại đây.
         self.txt_json_file = QLineEdit()
-        self.txt_json_file.setPlaceholderText("Đường dẫn file scenes.json (Mặc định: downloads)...")
         self.txt_json_file.textChanged.connect(self.on_input_changed)
-        btn_browse_json = QPushButton("Chọn...")
-        btn_browse_json.clicked.connect(self.browse_json_file)
-        box_json.addWidget(self.txt_json_file)
-        box_json.addWidget(btn_browse_json)
-        in_layout.addLayout(box_json)
 
         # Nút tiện ích quét nhanh
         quick_box = QHBoxLayout()
@@ -424,23 +413,6 @@ class VideoTab(QWidget):
             candidate_srts.sort(key=lambda f: f.stat().st_mtime, reverse=True)
             self.txt_srt_file.setText(str(candidate_srts[0].resolve()))
 
-        # 4. Tìm JSON (ưu tiên trong downloads/)
-        candidate_jsons = (
-            list(config.DOWNLOADS_DIR.glob("*.json")) +
-            list(base_dir.glob("*.json")) +
-            list(parent_dir.glob("*.json")) +
-            list((parent_dir / "evenlabs-voice").glob("*.json"))
-        )
-        found_json = None
-        for jf in candidate_jsons:
-            if "scene" in jf.name.lower():
-                found_json = jf
-                break
-        if not found_json and candidate_jsons:
-            found_json = candidate_jsons[0]
-        if found_json:
-            self.txt_json_file.setText(str(found_json.resolve()))
-
         self.generate_default_output_name()
 
     def set_project(self, project):
@@ -487,11 +459,8 @@ class VideoTab(QWidget):
         else:
             self.txt_srt_file.setText("")
 
-        # 4. File JSON kịch bản
-        if project.scenes_path.exists():
-            self.txt_json_file.setText(str(project.scenes_path.resolve()))
-        else:
-            self.txt_json_file.setText("")
+        # File JSON chỉ được nhận sau khi khách nhập ở bước 3.
+        self.txt_json_file.setText("")
 
         # 5. Tỉ lệ khung hình
         for idx in range(self.combo_ratio.count()):
@@ -511,7 +480,7 @@ class VideoTab(QWidget):
         self.txt_output_path.setText(str(out_p.resolve()))
 
         # Tự động phân tích nếu các file đều hợp lệ
-        if eff_img_dir.exists() and voice and srt and project.scenes_path.exists():
+        if eff_img_dir.exists() and voice and srt and self.txt_json_file.text():
             self.analyze_timeline()
         else:
             self.lbl_status.setText(f"Đã chuyển sang dự án '{project.name}'.")
@@ -538,6 +507,10 @@ class VideoTab(QWidget):
         self.lbl_status.setText("Đã nạp file Voice & SRT vừa tạo từ tab TTS.")
         self.analyze_timeline()
 
+    def set_json_file(self, json_path: str):
+        """Nhận file kịch bản đã chọn ở bước 3."""
+        self.txt_json_file.setText(json_path)
+
     def browse_image_dir(self):
         init_dir = self.txt_image_dir.text().strip() or str(config.DOWNLOADS_DIR)
         path = QFileDialog.getExistingDirectory(self, "Chọn thư mục chứa ảnh cảnh (Mặc định: downloads)", init_dir)
@@ -561,15 +534,6 @@ class VideoTab(QWidget):
         )
         if path:
             self.txt_srt_file.setText(path)
-            self.analyze_timeline()
-
-    def browse_json_file(self):
-        init_dir = str(config.DOWNLOADS_DIR)
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Chọn file kịch bản JSON (Mặc định: downloads)", init_dir, "JSON Files (*.json);;All Files (*.*)"
-        )
-        if path:
-            self.txt_json_file.setText(path)
             self.analyze_timeline()
 
     def browse_output_file(self):
@@ -599,8 +563,6 @@ class VideoTab(QWidget):
                     self.txt_audio_file.setText(str(p.resolve()))
                 elif suf == ".srt":
                     self.txt_srt_file.setText(str(p.resolve()))
-                elif suf == ".json":
-                    self.txt_json_file.setText(str(p.resolve()))
         event.acceptProposedAction()
         self.analyze_timeline()
 

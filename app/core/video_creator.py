@@ -150,6 +150,11 @@ def parse_json_mapping(json_path: Path, available_subs: List[int]) -> List[Dict[
         raise FileNotFoundError(f"File JSON không tồn tại: {json_path}")
 
     raw_data = json.loads(json_path.read_text(encoding="utf-8", errors="ignore"))
+    return parse_json_data(raw_data, available_subs)
+
+
+def parse_json_data(raw_data: Any, available_subs: List[int]) -> List[Dict[str, Any]]:
+    """Phân tích dữ liệu JSON đã nạp sẵn theo schema kịch bản cảnh."""
     scenes = []
 
     if isinstance(raw_data, dict):
@@ -166,7 +171,13 @@ def parse_json_mapping(json_path: Path, available_subs: List[int]) -> List[Dict[
         for idx, item in enumerate(raw_data, start=1):
             if isinstance(item, dict):
                 sc_id = item.get("id") or item.get("scene") or item.get("name") or f"SC{idx:02d}"
-                subs = item.get("subtitles") or item.get("subs") or item.get("sub_ids") or []
+                subs = (
+                    item.get("subtitles")
+                    or item.get("subtitle_ids")
+                    or item.get("subs")
+                    or item.get("sub_ids")
+                    or []
+                )
                 if isinstance(subs, int):
                     subs = [subs]
                 elif isinstance(subs, str):
@@ -178,6 +189,9 @@ def parse_json_mapping(json_path: Path, available_subs: List[int]) -> List[Dict[
                 })
             elif isinstance(item, str):
                 scenes.append({"id": item.strip(), "subtitles": []})
+
+    if not scenes:
+        return []
 
     # Nếu tất cả scenes đều chưa có subtitles
     has_subs = any(len(s.get("subtitles", [])) > 0 for s in scenes)

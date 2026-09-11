@@ -9,7 +9,7 @@ Tài liệu mô tả cấu trúc màn hình, phân cấp thông tin và hành vi
 - Người dùng mở ứng dụng là thấy danh sách dự án.
 - Click một dự án để đi vào workspace riêng của dự án đó.
 - Trong workspace luôn nhìn thấy tên dự án đang làm.
-- Ba công đoạn Ảnh, Giọng nói và Xuất video nằm trong cùng một workspace.
+- Bốn công đoạn Ảnh, Giọng nói, Kịch bản cảnh và Xuất video nằm trong cùng một workspace.
 - Cài đặt API là cấu hình cấp ứng dụng, không lẫn với nội dung dự án.
 
 ## 2. Mô hình điều hướng
@@ -26,7 +26,7 @@ Danh sách dự án
     ↓ click một dòng / Mở dự án
 Workspace của dự án đã chọn
     ↓
-1. Ảnh → 2. Giọng nói → 3. Xuất video
+1. Ảnh → 2. Giọng nói → 3. Kịch bản cảnh → 4. Xuất video
 ~~~
 
 Không đưa Gỡ watermark, TTS hoặc Ghép video thành các mục độc lập ở sidebar. Đây là các bước làm việc bên trong một dự án.
@@ -41,7 +41,8 @@ AI Media Studio
 │   └── Workspace dự án
 │       ├── 1. Ảnh
 │       ├── 2. Giọng nói
-│       └── 3. Xuất video
+│       ├── 3. Kịch bản cảnh
+│       └── 4. Xuất video
 └── Cài đặt
     ├── Tài khoản Voice API
     └── Giá trị mặc định
@@ -261,7 +262,7 @@ Mục tiêu: soạn nội dung, chọn voice, tạo audio/SRT và nghe lại tro
 - Chỉ một audio preview phát tại một thời điểm.
 - File tạo ra mặc định lưu tại project/voice.
 
-## 10. Bước 3 — Xuất video
+## 10. Bước 4 — Xuất video
 
 Mục tiêu: kiểm tra đầu vào, thiết lập render và xuất file thành phẩm.
 
@@ -377,7 +378,7 @@ Chỉ dùng xanh lam làm accent tương tác chính. Xanh lá, vàng và đỏ 
 - Click/double-click một dự án mở đúng workspace và đúng dữ liệu dự án đó.
 - Workspace luôn có tên dự án và nút quay lại danh sách.
 - Không thể nhầm dữ liệu/công cụ đang thuộc dự án nào.
-- Ba bước nằm cùng một workspace theo thứ tự Ảnh → Giọng nói → Xuất video.
+- Bốn bước nằm cùng một workspace theo thứ tự Ảnh → Giọng nói → Kịch bản cảnh → Xuất video.
 - Không dùng combo đổi dự án bên trong workspace.
 - Cài đặt API chỉ xuất hiện ở cấp ứng dụng.
 - Có thiết kế cho empty, loading, error, processing và completed.
