@@ -126,6 +126,7 @@ class TTSTab(QWidget):
         self.current_audio_path: Optional[Path] = None
         self.current_srt_path: Optional[Path] = None
         self.project = None
+        self.auto_save: bool = False
 
         # Trình phát audio
         self.player = QMediaPlayer()
@@ -137,6 +138,10 @@ class TTSTab(QWidget):
         self.player.durationChanged.connect(self.on_player_duration_changed)
 
         self.init_ui()
+
+    def set_auto_save(self, enabled: bool):
+        """Bật/tắt chế độ tự động lưu cho tab TTS."""
+        self.auto_save = enabled
 
     def set_project(self, project):
         """Cập nhật thông tin dự án hiện tại."""
@@ -162,6 +167,55 @@ class TTSTab(QWidget):
                 self.lbl_project_badge.setText("📁 Chưa chọn dự án")
                 self.lbl_project_badge.setStyleSheet("color: #6b7280; font-size: 11px;")
                 self.lbl_project_badge.setVisible(True)
+
+        # Nạp lại dữ liệu đã lưu của dự án
+        if project:
+            self._hydrate_project_tts(project)
+
+    def _hydrate_project_tts(self, project):
+        """Khôi phục kịch bản, cấu hình giọng và file âm thanh đã tạo trước đó."""
+        # 1. Khôi phục nội dung văn bản kịch bản
+        if project.tts_script:
+            self.txt_input.blockSignals(True)
+            self.txt_input.setPlainText(project.tts_script)
+            self.txt_input.blockSignals(False)
+            self.on_text_changed()
+
+        # 2. Khôi phục cấu hình Voice
+        cfg = project.tts_settings or {}
+        if cfg:
+            saved_prov = cfg.get("provider", "elevenlabs")
+            for i in range(self.combo_provider.count()):
+                if self.combo_provider.itemData(i) == saved_prov:
+                    self.combo_provider.setCurrentIndex(i)
+                    break
+
+            if "voice_id" in cfg:
+                self.edit_voice_id.setText(cfg["voice_id"])
+            if "model" in cfg:
+                self.combo_model.setCurrentText(cfg["model"])
+            if "lang" in cfg:
+                self.combo_lang.setCurrentText(cfg["lang"])
+            if "stability" in cfg:
+                self.slider_st.setValue(int(cfg["stability"] * 100))
+            if "similarity" in cfg:
+                self.slider_sim.setValue(int(cfg["similarity"] * 100))
+            if "speed" in cfg:
+                self.slider_sp.setValue(int(cfg["speed"] * 100))
+
+        # 3. Nạp lại file âm thanh và phụ đề đã có
+        voice = project.get_latest_voice()
+        srt = project.get_latest_srt()
+        if voice and voice.exists():
+            self.current_audio_path = voice
+            self.current_srt_path = srt
+            srt_str = f" + Phụ đề {srt.name}" if srt else ""
+            self.lbl_player_file.setText(f"✓ {voice.name} ({voice.stat().st_size:,} bytes){srt_str}")
+            self.player.setSource(QUrl.fromLocalFile(str(voice)))
+            self.btn_play_pause.setEnabled(True)
+            self.btn_stop.setEnabled(True)
+            self.btn_to_video.setEnabled(True)
+            self.lbl_status.setText("✓ Đã nạp file Voice & Phụ đề sẵn có của dự án.")
 
     def init_ui(self):
         root_layout = QVBoxLayout(self)
@@ -530,6 +584,9 @@ class TTSTab(QWidget):
         chunks = VibiClient.split_long_text(t, max_chars=3500) if t.strip() else []
         chunk_str = f" | {len(chunks)} đoạn" if len(chunks) > 1 else ""
         self.lbl_char_count.setText(f"{c:,} ký tự{chunk_str}")
+        if self.auto_save and self.project:
+            self.project.tts_script = t
+            self.project.save_metadata()
 
     def set_selected_voice_id(self, voice_id: str, voice_name: Optional[str] = None):
         self.edit_voice_id.setText(voice_id)
@@ -606,7 +663,19 @@ class TTSTab(QWidget):
         if success:
             self.lbl_status.setText("Tạo giọng thành công.")
             if self.project:
-                self.project.save_metadata()
+                provider = self.combo_provider.currentData() or "elevenlabs"
+                self.project.save_tts_data(
+                    self.txt_input.toPlainText(),
+                    {
+                        "provider": provider,
+                        "voice_id": self.edit_voice_id.text().strip(),
+                        "model": self.combo_model.currentText(),
+                        "lang": self.combo_lang.currentText(),
+                        "speed": self.slider_sp.value() / 100.0,
+                        "stability": self.slider_st.value() / 100.0,
+                        "similarity": self.slider_sim.value() / 100.0
+                    }
+                )
             p = Path(audio_path)
             self.current_audio_path = p
 
@@ -692,3 +761,20 @@ class TTSTab(QWidget):
                 subprocess.run(["xdg-open", str(target)])
         except Exception as e:
             QMessageBox.warning(self, "Lỗi", f"Không thể mở thư mục: {e}")
+
+    def save_current_state(self):
+        """Lưu lại nội dung text và cấu hình voice hiện tại vào dự án."""
+        if self.project:
+            provider = self.combo_provider.currentData() or "elevenlabs"
+            self.project.save_tts_data(
+                self.txt_input.toPlainText(),
+                {
+                    "provider": provider,
+                    "voice_id": self.edit_voice_id.text().strip(),
+                    "model": self.combo_model.currentText(),
+                    "lang": self.combo_lang.currentText(),
+                    "speed": self.slider_sp.value() / 100.0,
+                    "stability": self.slider_st.value() / 100.0,
+                    "similarity": self.slider_sim.value() / 100.0
+                }
+            )

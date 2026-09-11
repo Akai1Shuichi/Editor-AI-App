@@ -60,6 +60,8 @@ class Project:
         self.created_at: str = self._data.get("created_at", datetime.now().isoformat())
         self.updated_at: str = self._data.get("updated_at", self.created_at)
         self.notes: str = self._data.get("notes", "")
+        self.tts_script: str = self._data.get("tts_script", "")
+        self.tts_settings: Dict[str, Any] = self._data.get("tts_settings", {})
 
     # ================= ĐƯỜNG DẪN CÁC THƯ MỤC CON =================
     @property
@@ -179,10 +181,76 @@ class Project:
             "fps": self.fps,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-            "notes": self.notes
+            "notes": self.notes,
+            "tts_script": self.tts_script,
+            "tts_settings": self.tts_settings
         }
         self.path.mkdir(parents=True, exist_ok=True)
         self.metadata_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def save_tts_data(self, script: str, settings: Optional[Dict[str, Any]] = None):
+        """Lưu nhanh kịch bản đọc và cấu hình TTS của dự án."""
+        self.tts_script = script
+        if settings is not None:
+            self.tts_settings = settings
+        self.save_metadata()
+
+    def save_scenes_json(self, content: str) -> bool:
+        """Lưu nội dung kịch bản scenes.json vào thư mục dự án."""
+        try:
+            self.path.mkdir(parents=True, exist_ok=True)
+            self.scenes_path.write_text(content.strip(), encoding="utf-8")
+            self.save_metadata()
+            return True
+        except Exception:
+            return False
+
+    def load_scenes_json(self) -> str:
+        """Đọc nội dung kịch bản scenes.json nếu có."""
+        if self.scenes_path.exists():
+            try:
+                return self.scenes_path.read_text(encoding="utf-8")
+            except Exception:
+                return ""
+        return ""
+
+    def get_pipeline_summary(self) -> Dict[str, Any]:
+        """Tóm tắt trực quan trạng thái 4 bước cho giao diện Workspace."""
+        clean_imgs = len(self.get_clean_images())
+        raw_imgs = len(self.get_raw_images())
+        voice = self.get_latest_voice()
+        srt = self.get_latest_srt()
+
+        scenes_count = 0
+        has_valid_scenes = False
+        scenes_content = self.load_scenes_json()
+        if scenes_content:
+            try:
+                data = json.loads(scenes_content)
+                if isinstance(data, list):
+                    scenes_count = len(data)
+                    has_valid_scenes = scenes_count > 0
+                elif isinstance(data, dict) and "scenes" in data and isinstance(data["scenes"], list):
+                    scenes_count = len(data["scenes"])
+                    has_valid_scenes = scenes_count > 0
+            except Exception:
+                pass
+
+        videos_count = len(self.get_rendered_videos())
+
+        return {
+            "clean_images_count": clean_imgs,
+            "raw_images_count": raw_imgs,
+            "has_images": clean_imgs > 0 or raw_imgs > 0,
+            "has_clean_images": clean_imgs > 0,
+            "has_voice": voice is not None,
+            "has_srt": srt is not None,
+            "voice_ready": voice is not None and srt is not None,
+            "scenes_count": scenes_count,
+            "has_scenes": has_valid_scenes,
+            "videos_count": videos_count,
+            "has_video": videos_count > 0,
+        }
 
 
 class ProjectManager:

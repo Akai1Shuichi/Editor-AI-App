@@ -64,6 +64,8 @@ class VideoRenderWorker(QThread):
 class VideoTab(QWidget):
     """Tab Ghép Video Tự Động từ Ảnh, Voice, Phụ đề SRT & Kịch bản JSON."""
 
+    video_rendered = pyqtSignal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("video_tab")
@@ -800,6 +802,8 @@ class VideoTab(QWidget):
                 self.project.save_metadata()
             out_p = res.get("output_path")
             self.last_output_video = out_p
+            if out_p:
+                self.video_rendered.emit(str(out_p))
             dur = res.get("duration", 0.0)
             size_mb = res.get("size_mb", 0.0)
             ratio = self.combo_ratio.currentText()

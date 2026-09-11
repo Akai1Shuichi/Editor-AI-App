@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent
+from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QProgressBar, QTableWidget, QTableWidgetItem,
@@ -46,7 +46,6 @@ class WatermarkWorker(QThread):
                 if self.output_dir:
                     out_path = self.output_dir / out_name
                 else:
-                    # Tạo folder 'clean' trong folder chứa ảnh vừa nhập để tránh lộn xộn
                     clean_dir = file_path.parent / "clean"
                     clean_dir.mkdir(parents=True, exist_ok=True)
                     out_path = clean_dir / out_name
@@ -123,6 +122,8 @@ class DropArea(QFrame):
 class WatermarkTab(QWidget):
     """Tab chức năng Gỡ Watermark - Thiết kế tinh giản, tối ưu không gian."""
 
+    images_updated = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("watermark_tab")
@@ -141,12 +142,25 @@ class WatermarkTab(QWidget):
             self.clear_file_list()
         self.project = project
         if project:
-            self.lbl_project_badge.setText("Kết quả: images/clean")
-            self.lbl_project_badge.setStyleSheet("color: #70798a; font-size: 11px;")
+            clean_count = len(project.get_clean_images())
+            raw_count = len(project.get_raw_images())
+            if clean_count > 0:
+                self.lbl_project_badge.setText(f"✓ {clean_count} ảnh sạch sẵn sàng")
+                self.lbl_project_badge.setStyleSheet("color: #34d399; font-size: 11px; font-weight: 600;")
+            elif raw_count > 0:
+                self.lbl_project_badge.setText(f"{raw_count} ảnh gốc chờ xử lý")
+                self.lbl_project_badge.setStyleSheet("color: #facc15; font-size: 11px;")
+            else:
+                self.lbl_project_badge.setText("Kết quả: images/clean")
+                self.lbl_project_badge.setStyleSheet("color: #70798a; font-size: 11px;")
+
             self.output_dir = project.clean_images_dir
             self.chk_custom_out.setChecked(True)
             self.chk_custom_out.setVisible(False)
             self.btn_custom_out.setVisible(False)
+
+            # Tự động nạp danh sách ảnh đã có của dự án
+            self._hydrate_project_images(project)
         else:
             self.lbl_project_badge.setText("📁 Chưa chọn dự án")
             self.lbl_project_badge.setStyleSheet("color: #6b7280; font-size: 11px;")
@@ -155,6 +169,43 @@ class WatermarkTab(QWidget):
             self.chk_custom_out.setText("Lưu thư mục riêng")
             self.chk_custom_out.setVisible(True)
             self.btn_custom_out.setVisible(True)
+
+        self.images_updated.emit()
+
+    def _hydrate_project_images(self, project):
+        """Nạp ảnh sạch hoặc ảnh gốc đã có vào danh sách để người dùng thấy ngay."""
+        clean_imgs = project.get_clean_images()
+        if clean_imgs:
+            self.selected_files = list(clean_imgs)
+            self.table.setRowCount(0)
+            for row, p in enumerate(clean_imgs):
+                self.table.insertRow(row)
+                item_file = QTableWidgetItem(p.name)
+                item_file.setToolTip(str(p))
+                self.table.setItem(row, 0, item_file)
+
+                item_status = QTableWidgetItem("✓ Sẵn sàng")
+                item_status.setForeground(QColor("#34d399"))
+                self.table.setItem(row, 1, item_status)
+                self.table.setItem(row, 2, QTableWidgetItem("Đã gỡ watermark"))
+
+            self.status_lbl.setText(f"✓ Dự án có {len(clean_imgs)} ảnh sạch sẵn sàng cho video.")
+            self.display_image_preview(clean_imgs[0], self.lbl_preview_orig)
+            self.display_image_preview(clean_imgs[0], self.lbl_preview_clean)
+        else:
+            raw_imgs = project.get_raw_images()
+            if raw_imgs:
+                self.selected_files = list(raw_imgs)
+                self.table.setRowCount(0)
+                for row, p in enumerate(raw_imgs):
+                    self.table.insertRow(row)
+                    item_file = QTableWidgetItem(p.name)
+                    item_file.setToolTip(str(p))
+                    self.table.setItem(row, 0, item_file)
+                    self.table.setItem(row, 1, QTableWidgetItem("Chờ"))
+                    self.table.setItem(row, 2, QTableWidgetItem("-"))
+                self.status_lbl.setText(f"Có {len(raw_imgs)} ảnh gốc trong thư mục images/, bấm Bắt đầu để xử lý.")
+                self.display_image_preview(raw_imgs[0], self.lbl_preview_orig)
 
     def init_ui(self):
         main_layout = QHBoxLayout(self)
@@ -178,114 +229,111 @@ class WatermarkTab(QWidget):
         left_layout.addWidget(self.drop_area)
 
         # Toolbar chọn file
-        btn_bar = QHBoxLayout()
-        btn_bar.setSpacing(8)
+        btn_box = QHBoxLayout()
+        btn_box.setSpacing(8)
 
-        self.btn_select_files = QPushButton("Chọn File Ảnh")
+        self.btn_select_files = QPushButton("Chọn File Ảnh...")
         self.btn_select_files.clicked.connect(self.choose_files)
 
         self.btn_select_folder = QPushButton("Chọn Thư Mục")
+        self.btn_select_folder.setObjectName("btn_subtle")
         self.btn_select_folder.clicked.connect(self.choose_folder)
 
-        self.btn_clear_list = QPushButton("Xóa Danh Sách")
-        self.btn_clear_list.setObjectName("btn_subtle")
-        self.btn_clear_list.clicked.connect(self.clear_file_list)
+        self.btn_clear = QPushButton("Xóa Hết")
+        self.btn_clear.setObjectName("btn_subtle")
+        self.btn_clear.clicked.connect(self.clear_file_list)
 
-        btn_bar.addWidget(self.btn_select_files)
-        btn_bar.addWidget(self.btn_select_folder)
-        btn_bar.addStretch()
-        btn_bar.addWidget(self.btn_clear_list)
-        left_layout.addLayout(btn_bar)
+        btn_box.addWidget(self.btn_select_files)
+        btn_box.addWidget(self.btn_select_folder)
+        btn_box.addWidget(self.btn_clear)
+        left_layout.addLayout(btn_box)
 
-        # Bảng danh sách file ảnh
-        self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["Tên File", "Trạng Thái", "Đường Dẫn Kết Quả"])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.table.verticalHeader().setDefaultSectionSize(32)
-        self.table.itemSelectionChanged.connect(self.on_table_selection_changed)
-        left_layout.addWidget(self.table)
+        # Cấu hình lưu file ra
+        out_box = QHBoxLayout()
+        out_box.setSpacing(8)
 
-        # Cấu hình lưu trữ (Gọn trong 1 dòng)
-        settings_panel = QFrame()
-        settings_panel.setProperty("class", "panel")
-        settings_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        s_layout = QHBoxLayout(settings_panel)
-        s_layout.setContentsMargins(10, 8, 10, 8)
-        s_layout.setSpacing(14)
-
-        # Project Badge & Output option
         self.lbl_project_badge = QLabel("📁 Chưa chọn dự án")
         self.lbl_project_badge.setStyleSheet("color: #6b7280; font-size: 11px;")
-        s_layout.addWidget(self.lbl_project_badge)
 
         self.chk_custom_out = QCheckBox("Lưu thư mục riêng")
         self.chk_custom_out.setToolTip("Mặc định ảnh sạch sẽ được lưu vào thư mục 'clean' của dự án hoặc thư mục ảnh gốc.")
         self.chk_custom_out.toggled.connect(self.toggle_custom_out)
-        self.btn_custom_out = QPushButton("Chọn...")
+
+        self.btn_custom_out = QPushButton("Chọn thư mục...")
         self.btn_custom_out.setEnabled(False)
+        self.btn_custom_out.setObjectName("btn_subtle")
         self.btn_custom_out.clicked.connect(self.choose_output_folder)
 
-        s_layout.addWidget(self.chk_custom_out)
-        s_layout.addWidget(self.btn_custom_out)
-        s_layout.addStretch()
+        out_box.addWidget(self.lbl_project_badge)
+        out_box.addStretch()
+        out_box.addWidget(self.chk_custom_out)
+        out_box.addWidget(self.btn_custom_out)
+        left_layout.addLayout(out_box)
 
-        left_layout.addWidget(settings_panel)
+        # Bảng danh sách file
+        self.table = QTableWidget()
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["Tên File", "Trạng Thái", "Thời Gian"])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.cellClicked.connect(self.on_table_row_clicked)
+        left_layout.addWidget(self.table)
 
-        # Thanh thực thi Action
-        action_layout = QHBoxLayout()
-        action_layout.setSpacing(8)
+        # Thanh thực thi
+        action_box = QHBoxLayout()
+        action_box.setSpacing(8)
 
-        self.btn_start = QPushButton("Bắt đầu xử lý")
+        self.btn_start = QPushButton("Bắt Đầu Xử Lý")
         self.btn_start.setObjectName("btn_primary")
         self.btn_start.clicked.connect(self.start_processing)
 
-        self.btn_cancel = QPushButton("Dừng")
+        self.btn_cancel = QPushButton("Hủy")
         self.btn_cancel.setObjectName("btn_danger")
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.clicked.connect(self.cancel_processing)
 
         self.btn_open_folder = QPushButton("Mở thư mục ảnh")
+        self.btn_open_folder.setObjectName("btn_subtle")
         self.btn_open_folder.clicked.connect(self.open_output_dir)
 
-        action_layout.addWidget(self.btn_start, stretch=2)
-        action_layout.addWidget(self.btn_cancel)
-        action_layout.addWidget(self.btn_open_folder)
-        left_layout.addLayout(action_layout)
+        action_box.addWidget(self.btn_start, stretch=2)
+        action_box.addWidget(self.btn_cancel)
+        action_box.addWidget(self.btn_open_folder)
+        left_layout.addLayout(action_box)
 
-        # Progress bar & Status
+        # Progress bar
         self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.status_lbl = QLabel("Sẵn sàng. Chưa có ảnh nào được chọn.")
-        self.status_lbl.setStyleSheet("color: #6b7280; font-size: 11px;")
-
         left_layout.addWidget(self.progress_bar)
+
+        self.status_lbl = QLabel("Sẵn sàng.")
+        self.status_lbl.setStyleSheet("color: #6b7280; font-size: 11px;")
         left_layout.addWidget(self.status_lbl)
 
         splitter.addWidget(left_box)
 
-        # ================= CỘT PHẢI: XEM TRƯỚC (BEFORE / AFTER) =================
+        # ================= CỘT PHẢI: XEM TRƯỚC (PREVIEW) =================
         right_box = QWidget()
         right_box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         right_layout = QVBoxLayout(right_box)
         right_layout.setContentsMargins(8, 0, 0, 0)
-        right_layout.setSpacing(10)
+        right_layout.setSpacing(8)
 
-        # Preview Ảnh Gốc
-        lbl_p1 = QLabel("Ảnh gốc:")
+        lbl_p1 = QLabel("Ảnh gốc (Trước khi xử lý):")
         lbl_p1.setProperty("class", "section_label")
         self.lbl_preview_orig = QLabel("Chưa chọn ảnh")
-        self.lbl_preview_orig.setObjectName("preview_frame")
+        self.lbl_preview_orig.setObjectName("preview_box")
         self.lbl_preview_orig.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_preview_orig.setStyleSheet("color: #6b7280; min-height: 200px;")
 
-        # Preview Ảnh Đã Gỡ
-        lbl_p2 = QLabel("Kết quả sau khi gỡ:")
+        lbl_p2 = QLabel("Kết quả sạch (Đã gỡ watermark):")
         lbl_p2.setProperty("class", "section_label")
         self.lbl_preview_clean = QLabel("Chưa có kết quả")
-        self.lbl_preview_clean.setObjectName("preview_frame")
+        self.lbl_preview_clean.setObjectName("preview_box")
         self.lbl_preview_clean.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_preview_clean.setStyleSheet("color: #6b7280; min-height: 200px;")
 
@@ -346,6 +394,7 @@ class WatermarkTab(QWidget):
         self.status_lbl.setText(f"Đã nạp {len(self.selected_files)} ảnh.")
         if self.selected_files:
             self.display_image_preview(self.selected_files[0], self.lbl_preview_orig)
+        self.images_updated.emit()
 
     def clear_file_list(self):
         self.selected_files.clear()
@@ -354,79 +403,63 @@ class WatermarkTab(QWidget):
         self.lbl_preview_clean.setText("Chưa có kết quả")
         self.status_lbl.setText("Danh sách trống.")
         self.progress_bar.setValue(0)
+        self.images_updated.emit()
 
     def display_image_preview(self, path: Path, label: QLabel):
         if not path.exists():
             return
-        pixmap = QPixmap(str(path))
-        if not pixmap.isNull():
-            scaled = pixmap.scaled(
+        pix = QPixmap(str(path))
+        if not pix.isNull():
+            label.setPixmap(pix.scaled(
                 label.size(),
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
-            )
-            label.setPixmap(scaled)
+            ))
 
-    def on_table_selection_changed(self):
-        selected_rows = self.table.selectedIndexes()
-        if not selected_rows:
-            return
-        row = selected_rows[0].row()
+    def on_table_row_clicked(self, row: int, col: int):
         if 0 <= row < len(self.selected_files):
-            orig_path = self.selected_files[row]
-            self.display_image_preview(orig_path, self.lbl_preview_orig)
+            orig_p = self.selected_files[row]
+            self.display_image_preview(orig_p, self.lbl_preview_orig)
 
-            clean_item = self.table.item(row, 2)
-            if clean_item and clean_item.text() != "-":
-                clean_path = Path(clean_item.text())
-                if clean_path.exists():
-                    self.display_image_preview(clean_path, self.lbl_preview_clean)
-                else:
-                    self.lbl_preview_clean.setText("File không tồn tại")
+            # Nếu ảnh đã là ảnh sạch hoặc có file sạch tương ứng
+            if "_cleaned" in orig_p.stem or (self.project and orig_p.parent == self.project.clean_images_dir):
+                self.display_image_preview(orig_p, self.lbl_preview_clean)
             else:
-                self.lbl_preview_clean.setText("Chưa xử lý")
+                out_dir = self.output_dir or (self.project.clean_images_dir if self.project else orig_p.parent / "clean")
+                clean_p = out_dir / f"{orig_p.stem}_cleaned.png"
+                if clean_p.exists():
+                    self.display_image_preview(clean_p, self.lbl_preview_clean)
+                else:
+                    self.lbl_preview_clean.setText("Chưa có kết quả")
 
     def start_processing(self):
         if not self.selected_files:
-            QMessageBox.warning(self, "Chưa chọn file", "Vui lòng thêm ít nhất 1 ảnh để xử lý!")
+            QMessageBox.warning(self, "Chưa có file", "Vui lòng chọn hoặc kéo thả ít nhất 1 ảnh!")
             return
 
-        gain = 0.6
-        preset_mode = "auto"
-        if self.chk_custom_out.isChecked() and self.output_dir:
-            out_dir = self.output_dir
-        elif self.project:
-            out_dir = self.project.clean_images_dir
-        else:
-            out_dir = None
+        out_dir = self.output_dir or (self.project.clean_images_dir if self.project else None)
 
         self.btn_start.setEnabled(False)
         self.btn_cancel.setEnabled(True)
-        self.progress_bar.setMaximum(len(self.selected_files))
         self.progress_bar.setValue(0)
-        self.status_lbl.setText("Đang xử lý...")
+        self.status_lbl.setText("Đang chuẩn bị...")
 
-        self.worker = WatermarkWorker(self.selected_files, out_dir, gain, preset_mode)
+        self.worker = WatermarkWorker(
+            file_paths=self.selected_files,
+            output_dir=out_dir
+        )
         self.worker.file_processed.connect(self.on_file_processed)
         self.worker.finished_all.connect(self.on_finished_all)
         self.worker.start()
 
     def on_file_processed(self, current: int, total: int, filename: str, success: bool, msg: str):
-        self.progress_bar.setValue(current)
+        pct = int(current / total * 100)
+        self.progress_bar.setValue(pct)
+
         row = current - 1
-        if success:
-            item_status = QTableWidgetItem("Xong")
-            item_status.setForeground(Qt.GlobalColor.green)
-            self.table.setItem(row, 1, item_status)
-            item_res = QTableWidgetItem(msg)
-            item_res.setToolTip(msg)
-            self.table.setItem(row, 2, item_res)
-            clean_path = Path(msg)
-            if clean_path.exists():
-                self.display_image_preview(clean_path, self.lbl_preview_clean)
-        else:
-            item_status = QTableWidgetItem("Lỗi")
-            item_status.setForeground(Qt.GlobalColor.red)
+        if 0 <= row < self.table.rowCount():
+            item_status = QTableWidgetItem("✓ Xong" if success else "✗ Lỗi")
+            item_status.setForeground(QColor("#34d399" if success else "#f87171"))
             self.table.setItem(row, 1, item_status)
             self.table.setItem(row, 2, QTableWidgetItem(msg))
 
@@ -439,6 +472,7 @@ class WatermarkTab(QWidget):
             self.project.save_metadata()
         target_name = self.output_dir.name if self.output_dir else (self.project.clean_images_dir.name if self.project else "clean")
         self.status_lbl.setText(f"Hoàn thành: {success_count}/{total} file (lưu tại '{target_name}').")
+        self.images_updated.emit()
 
     def cancel_processing(self):
         if self.worker and self.worker.isRunning():

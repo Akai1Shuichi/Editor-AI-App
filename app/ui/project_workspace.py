@@ -7,6 +7,7 @@ from typing import Optional
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QInputDialog,
@@ -90,12 +91,43 @@ class ProjectWorkspace(QWidget):
         header_layout.addLayout(title_box)
         header_layout.addStretch()
 
+        # Dải trạng thái tài nguyên 4 bước (Pipeline Badges)
+        self.badge_images = QLabel("📷 0 ảnh")
+        self.badge_images.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+
+        self.badge_voice = QLabel("🎙️ Chưa có voice")
+        self.badge_voice.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+
+        self.badge_scenes = QLabel("📝 Chưa có kịch bản")
+        self.badge_scenes.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+
+        self.badge_video = QLabel("🎬 Chưa xuất video")
+        self.badge_video.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+
+        header_layout.addWidget(self.badge_images)
+        header_layout.addWidget(self.badge_voice)
+        header_layout.addWidget(self.badge_scenes)
+        header_layout.addWidget(self.badge_video)
+
         self.badge_ratio = QLabel("—")
         self.badge_ratio.setObjectName("project_meta")
         self.badge_fps = QLabel("—")
         self.badge_fps.setObjectName("project_meta")
         header_layout.addWidget(self.badge_ratio)
         header_layout.addWidget(self.badge_fps)
+
+        self.chk_auto_save = QCheckBox("Tự động lưu")
+        self.chk_auto_save.setChecked(False)  # Mặc định là TẮT toggle
+        self.chk_auto_save.setStyleSheet("color: #d1d5db; font-size: 12px; font-weight: 500; margin-right: 4px;")
+        self.chk_auto_save.setToolTip("Bật để tự động lưu kịch bản và cấu hình khi chỉnh sửa (mặc định tắt)")
+        self.chk_auto_save.toggled.connect(self._on_auto_save_toggled)
+        header_layout.addWidget(self.chk_auto_save)
+
+        self.btn_save = QPushButton("💾  Lưu dự án")
+        self.btn_save.setObjectName("btn_subtle")
+        self.btn_save.setToolTip("Lưu toàn bộ kịch bản, cấu hình và trạng thái của dự án")
+        self.btn_save.clicked.connect(self.save_project_manually)
+        header_layout.addWidget(self.btn_save)
 
         self.btn_menu = QPushButton("•••")
         self.btn_menu.setObjectName("btn_icon")
@@ -132,10 +164,13 @@ class ProjectWorkspace(QWidget):
         workspace_layout.addWidget(self.inner_tabs, stretch=1)
         self.stack.addWidget(self.workspace_page)
 
+        self.watermark_tab.images_updated.connect(self.refresh_pipeline_badges)
         self.tts_tab.send_to_video.connect(self._on_tts_send_to_video)
         self.tts_tab.voice_generated.connect(self._on_voice_generated)
         self.scene_tab.scene_path_changed.connect(self.video_tab.set_json_file)
+        self.scene_tab.scenes_updated.connect(self.refresh_pipeline_badges)
         self.scene_tab.continue_to_video.connect(self._on_scene_continue_to_video)
+        self.video_tab.video_rendered.connect(self._on_video_rendered)
         self.inner_tabs.currentChanged.connect(self._on_inner_tab_changed)
 
     def show_project_list(self, checked=False, force=False):
@@ -179,7 +214,17 @@ class ProjectWorkspace(QWidget):
         self.tts_tab.set_project(project)
         self.video_tab.set_project(project)
         self.scene_tab.set_project(project)
+        self.tts_tab.set_auto_save(self.chk_auto_save.isChecked())
+        self.scene_tab.set_auto_save(self.chk_auto_save.isChecked())
         self.project_changed.emit(project.slug)
+        self.refresh_pipeline_badges()
+
+    def _on_auto_save_toggled(self, checked: bool):
+        """Khi người dùng bật/tắt checkbox Tự động lưu."""
+        self.tts_tab.set_auto_save(checked)
+        self.scene_tab.set_auto_save(checked)
+        if checked:
+            self.save_project_manually(silent=True)
 
     def navigate_to_pipeline_step(self, step_index: int):
         if not self.current_project:
@@ -190,19 +235,110 @@ class ProjectWorkspace(QWidget):
     def _on_tts_send_to_video(self, audio_path: str, srt_path: str):
         self.video_tab.set_audio_and_srt(audio_path, srt_path)
         self.inner_tabs.setCurrentIndex(2)
+        self.refresh_pipeline_badges()
 
     def _on_voice_generated(self, audio_path: str, srt_path: str):
         """Khi tạo voice xong ở tab 2, tự động ghi ngay file voice.mp3 và voice.srt sang tab 4."""
         self.video_tab.set_audio_and_srt(audio_path, srt_path)
+        self.refresh_pipeline_badges()
+
+    def _on_video_rendered(self, output_path: str):
+        """Khi video render xong ở tab 4, cập nhật lại trạng thái pipeline."""
+        self.refresh_pipeline_badges()
 
     def _on_inner_tab_changed(self, index: int):
-        """Khi bấm chuyển sang tab xuất video (index 3), tự động quét và điền file mới nhất."""
-        if index == 3 and self.current_project:
-            self.video_tab.auto_detect_defaults()
+        """Khi bấm chuyển tab, tự động quét và cập nhật trạng thái."""
+        if self.current_project:
+            if index == 3:
+                self.video_tab.auto_detect_defaults()
+            self.refresh_pipeline_badges()
+
+    def refresh_pipeline_badges(self):
+        """Cập nhật các badge chỉ báo trên Header và tên các Tab."""
+        if not self.current_project:
+            return
+        summary = self.current_project.get_pipeline_summary()
+
+        # 1. Ảnh
+        clean_c = summary["clean_images_count"]
+        raw_c = summary["raw_images_count"]
+        if clean_c > 0:
+            self.badge_images.setText(f"📷 {clean_c} ảnh clean ✓")
+            self.badge_images.setStyleSheet("background-color: #064e3b; border: 1px solid #065f46; color: #34d399; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600;")
+            self.inner_tabs.setTabText(0, f"1   Ảnh ({clean_c}✓)")
+        elif raw_c > 0:
+            self.badge_images.setText(f"📷 {raw_c} ảnh gốc")
+            self.badge_images.setStyleSheet("background-color: #422006; border: 1px solid #713f12; color: #facc15; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600;")
+            self.inner_tabs.setTabText(0, f"1   Ảnh ({raw_c})")
+        else:
+            self.badge_images.setText("📷 0 ảnh")
+            self.badge_images.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+            self.inner_tabs.setTabText(0, "1   Ảnh")
+
+        # 2. Voice & SRT
+        if summary["voice_ready"]:
+            self.badge_voice.setText("🎙️ Voice & SRT ✓")
+            self.badge_voice.setStyleSheet("background-color: #064e3b; border: 1px solid #065f46; color: #34d399; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600;")
+            self.inner_tabs.setTabText(1, "2   Giọng nói (✓)")
+        elif summary["has_voice"]:
+            self.badge_voice.setText("🎙️ Có voice (Thiếu SRT)")
+            self.badge_voice.setStyleSheet("background-color: #422006; border: 1px solid #713f12; color: #facc15; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600;")
+            self.inner_tabs.setTabText(1, "2   Giọng nói (⚠)")
+        else:
+            self.badge_voice.setText("🎙️ Chưa có voice")
+            self.badge_voice.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+            self.inner_tabs.setTabText(1, "2   Giọng nói")
+
+        # 3. Kịch bản
+        if summary["has_scenes"]:
+            self.badge_scenes.setText(f"📝 {summary['scenes_count']} cảnh ✓")
+            self.badge_scenes.setStyleSheet("background-color: #064e3b; border: 1px solid #065f46; color: #34d399; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600;")
+            self.inner_tabs.setTabText(2, f"3   Kịch bản ({summary['scenes_count']}✓)")
+        else:
+            self.badge_scenes.setText("📝 Chưa có kịch bản")
+            self.badge_scenes.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+            self.inner_tabs.setTabText(2, "3   Kịch bản cảnh")
+
+        # 4. Video
+        vid_c = summary["videos_count"]
+        if vid_c > 0:
+            self.badge_video.setText(f"🎬 {vid_c} video ✓")
+            self.badge_video.setStyleSheet("background-color: #064e3b; border: 1px solid #065f46; color: #34d399; border-radius: 6px; padding: 4px 8px; font-size: 11px; font-weight: 600;")
+            self.inner_tabs.setTabText(3, f"4   Xuất video ({vid_c}✓)")
+        else:
+            self.badge_video.setText("🎬 Chưa xuất video")
+            self.badge_video.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+            self.inner_tabs.setTabText(3, "4   Xuất video")
+
+    def save_project_manually(self, silent: bool = False):
+        """Lưu lại toàn bộ dữ liệu hiện thời từ các tab vào dự án."""
+        if not self.current_project:
+            return
+
+        # Lưu tab TTS
+        if hasattr(self.tts_tab, "save_current_state"):
+            self.tts_tab.save_current_state()
+
+        # Lưu tab Kịch bản
+        if hasattr(self.scene_tab, "save_current_state"):
+            self.scene_tab.save_current_state()
+
+        self.current_project.save_metadata()
+        self.refresh_pipeline_badges()
+        self.lbl_updated.setText(
+            f"Cập nhật {self._format_updated_at(self.current_project.updated_at)}"
+        )
+        if not silent:
+            QMessageBox.information(
+                self,
+                "Đã lưu dự án",
+                f"Đã lưu thành công toàn bộ dữ liệu và cấu hình cho dự án “{self.current_project.name}”."
+            )
 
     def _on_scene_continue_to_video(self):
         self.video_tab.analyze_timeline()
         self.inner_tabs.setCurrentIndex(3)
+        self.refresh_pipeline_badges()
 
     def _on_project_deleted(self, slug: str):
         if self.current_project and self.current_project.slug == slug:
@@ -266,6 +402,18 @@ class ProjectWorkspace(QWidget):
         self.tts_tab.set_project(None)
         self.scene_tab.set_project(None)
         self.video_tab.set_project(None)
+        self.badge_images.setText("📷 0 ảnh")
+        self.badge_images.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+        self.badge_voice.setText("🎙️ Chưa có voice")
+        self.badge_voice.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+        self.badge_scenes.setText("📝 Chưa có kịch bản")
+        self.badge_scenes.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+        self.badge_video.setText("🎬 Chưa xuất video")
+        self.badge_video.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; color: #9ca3af; border-radius: 6px; padding: 4px 8px; font-size: 11px;")
+        self.inner_tabs.setTabText(0, "1   Ảnh")
+        self.inner_tabs.setTabText(1, "2   Giọng nói")
+        self.inner_tabs.setTabText(2, "3   Kịch bản cảnh")
+        self.inner_tabs.setTabText(3, "4   Xuất video")
         self.project_changed.emit("")
 
     def _has_running_task(self) -> bool:

@@ -26,6 +26,7 @@ class SceneTab(QWidget):
 
     scene_path_changed = pyqtSignal(str)
     continue_to_video = pyqtSignal()
+    scenes_updated = pyqtSignal()
 
     TEXT_MODE = "text"
     FILE_MODE = "file"
@@ -38,7 +39,12 @@ class SceneTab(QWidget):
         self.project = None
         self._text_data = None
         self._valid_file_path = None
+        self.auto_save: bool = False
         self._build_ui()
+
+    def set_auto_save(self, enabled: bool):
+        """Bật/tắt chế độ tự động lưu cho tab Kịch bản."""
+        self.auto_save = enabled
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -155,8 +161,23 @@ class SceneTab(QWidget):
         self.combo_mode.setCurrentIndex(0)
         self.txt_scene_content.clear()
         self.txt_scene_path.clear()
+
+        # Nạp lại kịch bản scenes.json đã có của dự án
+        if project and project.scenes_path.exists():
+            scenes_content = project.load_scenes_json()
+            if scenes_content.strip():
+                self.txt_scene_content.blockSignals(True)
+                self.txt_scene_content.setPlainText(scenes_content)
+                self.txt_scene_content.blockSignals(False)
+                self._validate_text()
+                if self._text_data:
+                    self.scene_path_changed.emit(str(project.scenes_path.resolve()))
+                    self.scenes_updated.emit()
+                    return
+
         self._set_status("Chưa nhập kịch bản JSON.", False)
         self.scene_path_changed.emit("")
+        self.scenes_updated.emit()
 
     def browse_scene_file(self):
         current = self.txt_scene_path.text().strip().strip('"')
@@ -184,18 +205,33 @@ class SceneTab(QWidget):
         if not content:
             self._set_status("Chưa nhập nội dung JSON.", False)
             self.scene_path_changed.emit("")
+            self.scenes_updated.emit()
             return
         try:
             data = json.loads(content)
             scenes = video_creator.parse_json_data(data, [])
             if not scenes:
                 self._set_status("JSON hợp lệ nhưng chưa có phân cảnh.", False)
+                self.scene_path_changed.emit("")
             else:
                 self._text_data = data
-                self._set_status(f"Đã nhận diện {len(scenes)} phân cảnh từ nội dung JSON.", True)
+                self._set_status(f"✓ Đã nhận diện {len(scenes)} phân cảnh từ nội dung JSON.", True)
+                if self.auto_save and self.project:
+                    try:
+                        self.project.scenes_path.write_text(
+                            json.dumps(self._text_data, ensure_ascii=False, indent=2),
+                            encoding="utf-8"
+                        )
+                        self.project.save_metadata()
+                    except Exception:
+                        pass
+                if self.project and self.project.scenes_path.exists():
+                    self.scene_path_changed.emit(str(self.project.scenes_path.resolve()))
+                self.scenes_updated.emit()
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
             self._set_status(f"JSON không hợp lệ: {exc}", False)
-        self.scene_path_changed.emit("")
+            self.scene_path_changed.emit("")
+            self.scenes_updated.emit()
 
     def _validate_file_path(self, value: str):
         clean_value = value.strip().strip('"')
@@ -265,3 +301,16 @@ class SceneTab(QWidget):
                 self.txt_scene_path.setText(str(path.resolve()))
                 event.acceptProposedAction()
                 return
+
+    def save_current_state(self):
+        """Lưu lại nội dung kịch bản hiện tại vào scenes.json của dự án."""
+        if not self.project:
+            return
+        if self.combo_mode.currentData() == self.TEXT_MODE and self._text_data is not None:
+            self.project.save_scenes_json(json.dumps(self._text_data, ensure_ascii=False, indent=2))
+        elif self._valid_file_path and self._valid_file_path.exists():
+            try:
+                content = self._valid_file_path.read_text(encoding="utf-8")
+                self.project.save_scenes_json(content)
+            except Exception:
+                pass
