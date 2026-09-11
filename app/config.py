@@ -7,6 +7,16 @@ from dotenv import load_dotenv
 APP_DIR = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = APP_DIR / "downloads"
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+LEGACY_WATERMARK_DOWNLOADS_DIR = DOWNLOADS_DIR / "watermark"
+LEGACY_TTS_DOWNLOADS_DIR = DOWNLOADS_DIR / "tts"
+
+# Công cụ độc lập lưu vào thư mục Downloads của tài khoản máy.
+USER_DOWNLOADS_DIR = Path.home() / "Downloads"
+USER_DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+WATERMARK_DOWNLOADS_DIR = USER_DOWNLOADS_DIR / "watermark"
+TTS_DOWNLOADS_DIR = USER_DOWNLOADS_DIR / "tts"
+WATERMARK_DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+TTS_DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Thư mục chứa các dự án — đặt trên Desktop của user (cross-platform)
 def _get_projects_dir() -> Path:

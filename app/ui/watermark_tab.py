@@ -9,11 +9,16 @@ from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QProgressBar, QTableWidget, QTableWidgetItem,
-    QHeaderView, QCheckBox, QFrame, QMessageBox,
+    QHeaderView, QCheckBox, QFrame, QMessageBox, QLineEdit, QSizePolicy,
     QSplitter
 )
 
 from app.core.watermark_remover import GeminiWatermarkRemover
+from app.core.standalone_state import (
+    StandaloneStateStore,
+    build_output_folder_name,
+    resolve_new_output_folder,
+)
 from app import config
 
 class WatermarkWorker(QThread):
@@ -132,7 +137,46 @@ class WatermarkTab(QWidget):
         self.output_dir: Optional[Path] = None
         self.worker: Optional[WatermarkWorker] = None
         self.project = None
+        self.standalone_store: Optional[StandaloneStateStore] = None
+        self.current_run_dir: Optional[Path] = None
         self.init_ui()
+
+    def configure_standalone(
+        self, store: StandaloneStateStore, output_dir: Path
+    ) -> None:
+        """Configure this instance as a project-independent sidebar tool."""
+        self.standalone_store = store
+        self.tool_header.setVisible(True)
+        self.lbl_project_badge.setVisible(False)
+        self.chk_custom_out.setVisible(False)
+        self.lbl_output_name.setVisible(True)
+        self.edit_output_name.setVisible(True)
+        self.lbl_output_location.setVisible(True)
+        self.lbl_output_path.setVisible(True)
+
+        state = store.load_watermark()
+        saved_output = state.get("output_dir")
+        if saved_output == config.LEGACY_WATERMARK_DOWNLOADS_DIR:
+            saved_output = None
+        restored_output = saved_output or Path(output_dir)
+        restored_output.mkdir(parents=True, exist_ok=True)
+        self.output_dir = restored_output
+        self.edit_output_name.setText(build_output_folder_name("clean"))
+        self.lbl_output_path.setText(str(restored_output))
+        self.lbl_output_path.setToolTip(str(restored_output))
+        self.btn_custom_out.setEnabled(True)
+        self.btn_custom_out.setText("Thay đổi…")
+        if state.get("files"):
+            self.on_files_selected(state["files"])
+            self.status_lbl.setText(
+                f"Đã khôi phục {len(self.selected_files)} ảnh từ phiên trước."
+            )
+        self._save_standalone_state()
+
+    def _save_standalone_state(self) -> None:
+        if not self.standalone_store:
+            return
+        self.standalone_store.save_watermark(self.selected_files, self.output_dir)
 
     def set_project(self, project):
         """Cập nhật thông tin dự án hiện tại."""
@@ -208,9 +252,24 @@ class WatermarkTab(QWidget):
                 self.display_image_preview(raw_imgs[0], self.lbl_preview_orig)
 
     def init_ui(self):
-        main_layout = QHBoxLayout(self)
+        main_layout = QVBoxLayout(self)
         main_layout.setSpacing(14)
         main_layout.setContentsMargins(16, 16, 16, 16)
+
+        self.tool_header = QFrame()
+        self.tool_header.setObjectName("tool_header")
+        self.tool_header.setMaximumHeight(72)
+        header_layout = QHBoxLayout(self.tool_header)
+        header_layout.setContentsMargins(0, 0, 0, 2)
+        title_layout = QVBoxLayout()
+        title_layout.setSpacing(2)
+        self.tool_title = QLabel("Gỡ watermark Google Flow")
+        self.tool_title.setObjectName("tool_title")
+        title_layout.addWidget(self.tool_title)
+        header_layout.addLayout(title_layout)
+        header_layout.addStretch()
+        self.tool_header.setVisible(False)
+        main_layout.addWidget(self.tool_header)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setObjectName("content_container")
@@ -248,12 +307,35 @@ class WatermarkTab(QWidget):
         btn_box.addWidget(self.btn_clear)
         left_layout.addLayout(btn_box)
 
-        # Cấu hình lưu file ra
+        # Tên thư mục của một lượt xử lý độc lập
+        name_box = QHBoxLayout()
+        name_box.setSpacing(8)
+        self.lbl_output_name = QLabel("Tên thư mục kết quả:")
+        self.lbl_output_name.setProperty("class", "section_label")
+        self.edit_output_name = QLineEdit()
+        self.edit_output_name.setPlaceholderText("clean_YYYYMMDD_HHMMSS")
+        self.lbl_output_name.setVisible(False)
+        self.edit_output_name.setVisible(False)
+        name_box.addWidget(self.lbl_output_name)
+        name_box.addWidget(self.edit_output_name, stretch=1)
+        left_layout.addLayout(name_box)
+
+        # Cấu hình thư mục gốc lưu file
         out_box = QHBoxLayout()
         out_box.setSpacing(8)
 
         self.lbl_project_badge = QLabel("📁 Chưa chọn dự án")
         self.lbl_project_badge.setStyleSheet("color: #6b7280; font-size: 11px;")
+
+        self.lbl_output_location = QLabel("Lưu tại:")
+        self.lbl_output_location.setProperty("class", "section_label")
+        self.lbl_output_path = QLabel()
+        self.lbl_output_path.setObjectName("output_path")
+        self.lbl_output_path.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.lbl_output_location.setVisible(False)
+        self.lbl_output_path.setVisible(False)
 
         self.chk_custom_out = QCheckBox("Lưu thư mục riêng")
         self.chk_custom_out.setToolTip("Mặc định ảnh sạch sẽ được lưu vào thư mục 'clean' của dự án hoặc thư mục ảnh gốc.")
@@ -265,7 +347,8 @@ class WatermarkTab(QWidget):
         self.btn_custom_out.clicked.connect(self.choose_output_folder)
 
         out_box.addWidget(self.lbl_project_badge)
-        out_box.addStretch()
+        out_box.addWidget(self.lbl_output_location)
+        out_box.addWidget(self.lbl_output_path, stretch=1)
         out_box.addWidget(self.chk_custom_out)
         out_box.addWidget(self.btn_custom_out)
         left_layout.addLayout(out_box)
@@ -369,15 +452,27 @@ class WatermarkTab(QWidget):
                 QMessageBox.information(self, "Thông báo", "Không tìm thấy file ảnh phù hợp trong thư mục!")
 
     def toggle_custom_out(self, checked: bool):
+        if self.standalone_store:
+            return
         self.btn_custom_out.setEnabled(checked)
         if checked and not self.output_dir:
             self.choose_output_folder()
 
     def choose_output_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Chọn thư mục lưu file kết quả", str(Path.home()))
+        initial = self.output_dir or Path.home()
+        folder = QFileDialog.getExistingDirectory(
+            self, "Chọn thư mục lưu file kết quả", str(initial)
+        )
         if folder:
             self.output_dir = Path(folder)
-            self.btn_custom_out.setText(f"📁 {self.output_dir.name}")
+            if self.standalone_store:
+                self.current_run_dir = None
+                self.lbl_output_path.setText(str(self.output_dir))
+                self.lbl_output_path.setToolTip(str(self.output_dir))
+                self.btn_custom_out.setText("Thay đổi…")
+            else:
+                self.btn_custom_out.setText(f"📁 {self.output_dir.name}")
+            self._save_standalone_state()
 
     def on_files_selected(self, paths: List[Path]):
         for p in paths:
@@ -394,6 +489,7 @@ class WatermarkTab(QWidget):
         self.status_lbl.setText(f"Đã nạp {len(self.selected_files)} ảnh.")
         if self.selected_files:
             self.display_image_preview(self.selected_files[0], self.lbl_preview_orig)
+        self._save_standalone_state()
         self.images_updated.emit()
 
     def clear_file_list(self):
@@ -403,6 +499,7 @@ class WatermarkTab(QWidget):
         self.lbl_preview_clean.setText("Chưa có kết quả")
         self.status_lbl.setText("Danh sách trống.")
         self.progress_bar.setValue(0)
+        self._save_standalone_state()
         self.images_updated.emit()
 
     def display_image_preview(self, path: Path, label: QLabel):
@@ -425,7 +522,7 @@ class WatermarkTab(QWidget):
             if "_cleaned" in orig_p.stem or (self.project and orig_p.parent == self.project.clean_images_dir):
                 self.display_image_preview(orig_p, self.lbl_preview_clean)
             else:
-                out_dir = self.output_dir or (self.project.clean_images_dir if self.project else orig_p.parent / "clean")
+                out_dir = self.current_run_dir or self.output_dir or (self.project.clean_images_dir if self.project else orig_p.parent / "clean")
                 clean_p = out_dir / f"{orig_p.stem}_cleaned.png"
                 if clean_p.exists():
                     self.display_image_preview(clean_p, self.lbl_preview_clean)
@@ -437,7 +534,23 @@ class WatermarkTab(QWidget):
             QMessageBox.warning(self, "Chưa có file", "Vui lòng chọn hoặc kéo thả ít nhất 1 ảnh!")
             return
 
-        out_dir = self.output_dir or (self.project.clean_images_dir if self.project else None)
+        if self.standalone_store:
+            try:
+                out_dir = resolve_new_output_folder(
+                    self.output_dir or config.WATERMARK_DOWNLOADS_DIR,
+                    self.edit_output_name.text(),
+                )
+                out_dir.mkdir(parents=True)
+            except (ValueError, OSError) as exc:
+                QMessageBox.warning(self, "Không thể tạo thư mục", str(exc))
+                return
+            self.current_run_dir = out_dir
+            self.edit_output_name.setEnabled(False)
+            self.btn_custom_out.setEnabled(False)
+        else:
+            out_dir = self.output_dir or (
+                self.project.clean_images_dir if self.project else None
+            )
 
         self.btn_start.setEnabled(False)
         self.btn_cancel.setEnabled(True)
@@ -468,10 +581,27 @@ class WatermarkTab(QWidget):
     def on_finished_all(self, total: int, success_count: int):
         self.btn_start.setEnabled(True)
         self.btn_cancel.setEnabled(False)
+        if self.standalone_store:
+            self.edit_output_name.setEnabled(True)
+            self.btn_custom_out.setEnabled(True)
         if success_count and self.project:
             self.project.save_metadata()
-        target_name = self.output_dir.name if self.output_dir else (self.project.clean_images_dir.name if self.project else "clean")
+        result_dir = self.current_run_dir or self.output_dir
+        target_name = result_dir.name if result_dir else (self.project.clean_images_dir.name if self.project else "clean")
         self.status_lbl.setText(f"Hoàn thành: {success_count}/{total} file (lưu tại '{target_name}').")
+        if self.standalone_store:
+            empty_run_released = False
+            if success_count == 0 and self.current_run_dir:
+                try:
+                    self.current_run_dir.rmdir()
+                except OSError:
+                    pass
+                else:
+                    self.current_run_dir = None
+                    empty_run_released = True
+            if not empty_run_released:
+                self.edit_output_name.setText(build_output_folder_name("clean"))
+        self._save_standalone_state()
         self.images_updated.emit()
 
     def cancel_processing(self):
@@ -481,7 +611,7 @@ class WatermarkTab(QWidget):
             self.btn_cancel.setEnabled(False)
 
     def open_output_dir(self):
-        target = self.output_dir
+        target = self.current_run_dir or self.output_dir
         if not target and self.project and self.project.clean_images_dir.exists():
             target = self.project.clean_images_dir
         elif not target and self.selected_files:

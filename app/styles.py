@@ -143,6 +143,39 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     border-top: 1px solid #23252c;
 }
 
+/* ================= STANDALONE TOOL HEADER ================= */
+#tool_header {
+    background-color: transparent;
+    border-bottom: 1px solid #23252c;
+    padding-bottom: 10px;
+}
+
+#tool_title {
+    color: #f8fafc;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+#tool_subtitle {
+    color: #7f8a9d;
+    font-size: 12px;
+}
+
+#save_state {
+    color: #34d399;
+    background-color: #10251f;
+    border: 1px solid #1d493b;
+    border-radius: 6px;
+    padding: 5px 9px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+#output_path {
+    color: #8b95a7;
+    font-size: 11px;
+}
+
 /* ================= TOP BAR ================= */
 #top_bar {
     background-color: #16171d;

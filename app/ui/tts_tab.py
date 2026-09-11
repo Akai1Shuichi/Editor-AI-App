@@ -4,16 +4,22 @@ import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl, QTimer
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
     QLineEdit, QPushButton, QComboBox, QSlider, QCheckBox,
-    QProgressBar, QFrame, QMessageBox, QScrollArea, QTabWidget
+    QProgressBar, QFrame, QMessageBox, QFileDialog, QScrollArea, QTabWidget,
+    QSizePolicy
 )
 
 from app import config
 from app.core.vibi_client import VibiClient, VibiAPIError
+from app.core.standalone_state import (
+    StandaloneStateStore,
+    build_output_folder_name,
+    resolve_new_output_folder,
+)
 from app.ui.voice_lookup_tab import VoiceLookupTab
 
 class TTSWorker(QThread):
@@ -127,6 +133,11 @@ class TTSTab(QWidget):
         self.current_srt_path: Optional[Path] = None
         self.project = None
         self.auto_save: bool = False
+        self.standalone_store: Optional[StandaloneStateStore] = None
+        self.standalone_output_dir: Optional[Path] = None
+        self.current_run_dir: Optional[Path] = None
+        self._restoring_standalone = False
+        self._standalone_save_timer: Optional[QTimer] = None
 
         # Trình phát audio
         self.player = QMediaPlayer()
@@ -138,6 +149,119 @@ class TTSTab(QWidget):
         self.player.durationChanged.connect(self.on_player_duration_changed)
 
         self.init_ui()
+
+    def configure_standalone(
+        self, store: StandaloneStateStore, output_dir: Path
+    ) -> None:
+        """Configure this instance as a project-independent sidebar tool."""
+        self.standalone_store = store
+        self.standalone_output_dir = Path(output_dir)
+        self.standalone_output_dir.mkdir(parents=True, exist_ok=True)
+        self.tool_header.setVisible(True)
+        self.lbl_project_badge.setVisible(False)
+        self.btn_to_video.setVisible(False)
+        self.output_controls.setVisible(True)
+        self.edit_output_name.setText(
+            build_output_folder_name("voice", day_first=True)
+        )
+
+        self._standalone_save_timer = QTimer(self)
+        self._standalone_save_timer.setSingleShot(True)
+        self._standalone_save_timer.setInterval(350)
+        self._standalone_save_timer.timeout.connect(self._save_standalone_state)
+        self._restore_standalone_state()
+
+        for signal in (
+            self.combo_provider.currentIndexChanged,
+            self.edit_voice_id.textChanged,
+            self.combo_model.currentIndexChanged,
+            self.combo_lang.currentIndexChanged,
+            self.slider_st.valueChanged,
+            self.slider_sim.valueChanged,
+            self.slider_sp.valueChanged,
+            self.chk_srt.toggled,
+            self.tab_widget.currentChanged,
+        ):
+            signal.connect(self._schedule_standalone_save)
+        self._save_standalone_state()
+
+    def _schedule_standalone_save(self, *_args) -> None:
+        if self._restoring_standalone or not self._standalone_save_timer:
+            return
+        self._standalone_save_timer.start()
+
+    def _save_standalone_state(self) -> None:
+        if not self.standalone_store:
+            return
+        self.standalone_store.save_tts(
+            {
+                "script": self.txt_input.toPlainText(),
+                "provider": self.combo_provider.currentData() or "elevenlabs",
+                "voice_id": self.edit_voice_id.text().strip(),
+                "model": self.combo_model.currentText(),
+                "language": self.combo_lang.currentText(),
+                "stability": self.slider_st.value(),
+                "similarity": self.slider_sim.value(),
+                "speed": self.slider_sp.value(),
+                "export_srt": self.chk_srt.isChecked(),
+                "subtab": self.tab_widget.currentIndex(),
+                "audio_path": str(self.current_audio_path or ""),
+                "srt_path": str(self.current_srt_path or ""),
+                "output_dir": str(self.standalone_output_dir or ""),
+            }
+        )
+
+    def flush_standalone_state(self) -> None:
+        """Persist any debounced edit before the application closes."""
+        if self._standalone_save_timer:
+            self._standalone_save_timer.stop()
+        self._save_standalone_state()
+
+    def _restore_standalone_state(self) -> None:
+        state = self.standalone_store.load_tts() if self.standalone_store else {}
+        if not state:
+            return
+        self._restoring_standalone = True
+        try:
+            self.txt_input.setPlainText(str(state.get("script", "")))
+            provider = state.get("provider", "elevenlabs")
+            for index in range(self.combo_provider.count()):
+                if self.combo_provider.itemData(index) == provider:
+                    self.combo_provider.setCurrentIndex(index)
+                    break
+            self.edit_voice_id.setText(str(state.get("voice_id", "")))
+            self.combo_model.setCurrentText(str(state.get("model", "")))
+            self.combo_lang.setCurrentText(str(state.get("language", "")))
+            if "stability" in state:
+                self.slider_st.setValue(int(state["stability"]))
+            if "similarity" in state:
+                self.slider_sim.setValue(int(state["similarity"]))
+            if "speed" in state:
+                self.slider_sp.setValue(int(state["speed"]))
+            self.chk_srt.setChecked(bool(state.get("export_srt", True)))
+            output_dir = state.get("output_dir")
+            if output_dir and output_dir != config.LEGACY_TTS_DOWNLOADS_DIR:
+                self.standalone_output_dir = Path(output_dir)
+            self._update_output_path_label()
+            self.tab_widget.blockSignals(True)
+            self.tab_widget.setCurrentIndex(int(state.get("subtab", 0)))
+            self.tab_widget.blockSignals(False)
+
+            audio_path = state.get("audio_path")
+            srt_path = state.get("srt_path")
+            if audio_path:
+                self.current_audio_path = audio_path
+                self.current_srt_path = srt_path
+                srt_text = f" + Phụ đề {srt_path.name}" if srt_path else ""
+                self.lbl_player_file.setText(
+                    f"{audio_path.name} ({audio_path.stat().st_size:,} bytes){srt_text}"
+                )
+                self.player.setSource(QUrl.fromLocalFile(str(audio_path)))
+                self.btn_play_pause.setEnabled(True)
+                self.btn_stop.setEnabled(True)
+            self.lbl_status.setText("Đã khôi phục phiên làm việc gần nhất.")
+        finally:
+            self._restoring_standalone = False
 
     def set_auto_save(self, enabled: bool):
         """Bật/tắt chế độ tự động lưu cho tab TTS."""
@@ -221,6 +345,21 @@ class TTSTab(QWidget):
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(14, 12, 14, 14)
         root_layout.setSpacing(10)
+
+        self.tool_header = QFrame()
+        self.tool_header.setObjectName("tool_header")
+        self.tool_header.setMaximumHeight(72)
+        header_layout = QHBoxLayout(self.tool_header)
+        header_layout.setContentsMargins(0, 0, 0, 2)
+        title_layout = QVBoxLayout()
+        title_layout.setSpacing(2)
+        self.tool_title = QLabel("Tạo Voice TTS")
+        self.tool_title.setObjectName("tool_title")
+        title_layout.addWidget(self.tool_title)
+        header_layout.addLayout(title_layout)
+        header_layout.addStretch()
+        self.tool_header.setVisible(False)
+        root_layout.addWidget(self.tool_header)
 
         # Tab widget bên trong Tạo giọng TTS
         self.tab_widget = QTabWidget()
@@ -365,6 +504,34 @@ class TTSTab(QWidget):
 
         cp_layout.addLayout(row2)
         tts_layout.addWidget(cfg_panel)
+
+        self.output_controls = QWidget()
+        output_layout = QVBoxLayout(self.output_controls)
+        output_layout.setContentsMargins(0, 0, 0, 0)
+        output_layout.setSpacing(6)
+
+        output_name_row = QHBoxLayout()
+        output_name_row.addWidget(QLabel("Tên voice:"))
+        self.edit_output_name = QLineEdit()
+        self.edit_output_name.setPlaceholderText("voice_DDMMYYYY_HHMMSS")
+        output_name_row.addWidget(self.edit_output_name, stretch=1)
+        output_layout.addLayout(output_name_row)
+
+        output_path_row = QHBoxLayout()
+        output_path_row.addWidget(QLabel("Lưu tại:"))
+        self.lbl_output_path = QLabel()
+        self.lbl_output_path.setObjectName("output_path")
+        self.lbl_output_path.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.btn_choose_output = QPushButton("Thay đổi…")
+        self.btn_choose_output.setObjectName("btn_subtle")
+        self.btn_choose_output.clicked.connect(self.choose_output_folder)
+        output_path_row.addWidget(self.lbl_output_path, stretch=1)
+        output_path_row.addWidget(self.btn_choose_output)
+        output_layout.addLayout(output_path_row)
+        self.output_controls.setVisible(False)
+        tts_layout.addWidget(self.output_controls)
 
         # 3. Thanh thực thi (Action & Progress)
         action_bar = QHBoxLayout()
@@ -587,6 +754,7 @@ class TTSTab(QWidget):
         if self.auto_save and self.project:
             self.project.tts_script = t
             self.project.save_metadata()
+        self._schedule_standalone_save()
 
     def set_selected_voice_id(self, voice_id: str, voice_name: Optional[str] = None):
         self.edit_voice_id.setText(voice_id)
@@ -627,12 +795,27 @@ class TTSTab(QWidget):
                 "use_speaker_boost": True
             }
 
+        output_filename = "voice.mp3"
+        if self.standalone_store:
+            try:
+                out_dir = resolve_new_output_folder(
+                    self.standalone_output_dir or config.TTS_DOWNLOADS_DIR,
+                    self.edit_output_name.text(),
+                )
+                out_dir.mkdir(parents=True)
+            except (ValueError, OSError) as exc:
+                QMessageBox.warning(self, "Không thể tạo thư mục", str(exc))
+                return
+            self.current_run_dir = out_dir
+            output_filename = f"{out_dir.name}.mp3"
+            self.output_controls.setEnabled(False)
+        else:
+            out_dir = self.project.voice_dir if self.project else None
+
         self.btn_start.setEnabled(False)
         self.btn_cancel.setEnabled(True)
         self.progress_bar.setValue(10)
         self.lbl_status.setText(f"Đang kết nối Voice API ({provider.upper()})...")
-
-        out_dir = self.project.voice_dir if self.project else None
 
         self.worker = TTSWorker(
             text=text,
@@ -642,7 +825,7 @@ class TTSTab(QWidget):
             voice_settings=settings,
             export_srt=self.chk_srt.isChecked(),
             provider=provider,
-            output_filename="voice.mp3",
+            output_filename=output_filename,
             output_dir=out_dir
         )
         self.worker.status_updated.connect(self.lbl_status.setText)
@@ -659,6 +842,8 @@ class TTSTab(QWidget):
     def on_tts_finished(self, success: bool, audio_path: str, srt_path: str, msg: str):
         self.btn_start.setEnabled(True)
         self.btn_cancel.setEnabled(False)
+        if self.standalone_store:
+            self.output_controls.setEnabled(True)
 
         if success:
             self.lbl_status.setText("Tạo giọng thành công.")
@@ -703,7 +888,21 @@ class TTSTab(QWidget):
             # Tự động cập nhật sang tab xuất video ngay khi tạo xong
             srt_param = str(resolved_srt.resolve()) if resolved_srt else ""
             self.voice_generated.emit(str(p.resolve()), srt_param)
+            self._save_standalone_state()
+            if self.standalone_store:
+                self.edit_output_name.setText(
+                    build_output_folder_name("voice", day_first=True)
+                )
         else:
+            if self.standalone_store and self.current_run_dir:
+                try:
+                    self.current_run_dir.rmdir()
+                except OSError:
+                    self.edit_output_name.setText(
+                        build_output_folder_name("voice", day_first=True)
+                    )
+                else:
+                    self.current_run_dir = None
             # Phân biệt hủy vs lỗi thực sự
             is_cancelled = "hủy" in msg.lower() or "cancelled" in msg.lower()
             if is_cancelled:
@@ -751,7 +950,14 @@ class TTSTab(QWidget):
         return f"{mins:02d}:{sec:02d}"
 
     def open_downloads(self):
-        target = self.project.voice_dir if self.project and self.project.voice_dir.exists() else config.DOWNLOADS_DIR
+        if self.project and self.project.voice_dir.exists():
+            target = self.project.voice_dir
+        elif self.current_run_dir:
+            target = self.current_run_dir
+        elif self.standalone_output_dir:
+            target = self.standalone_output_dir
+        else:
+            target = config.DOWNLOADS_DIR
         try:
             if sys.platform.startswith("win"):
                 os.startfile(str(target))
@@ -761,6 +967,22 @@ class TTSTab(QWidget):
                 subprocess.run(["xdg-open", str(target)])
         except Exception as e:
             QMessageBox.warning(self, "Lỗi", f"Không thể mở thư mục: {e}")
+
+    def choose_output_folder(self):
+        initial = self.standalone_output_dir or config.TTS_DOWNLOADS_DIR
+        folder = QFileDialog.getExistingDirectory(
+            self, "Chọn thư mục lưu Voice TTS", str(initial)
+        )
+        if folder:
+            self.standalone_output_dir = Path(folder)
+            self.current_run_dir = None
+            self._update_output_path_label()
+            self._save_standalone_state()
+
+    def _update_output_path_label(self) -> None:
+        path = str(self.standalone_output_dir or config.TTS_DOWNLOADS_DIR)
+        self.lbl_output_path.setText(path)
+        self.lbl_output_path.setToolTip(path)
 
     def save_current_state(self):
         """Lưu lại nội dung text và cấu hình voice hiện tại vào dự án."""
