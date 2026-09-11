@@ -423,8 +423,15 @@ class VideoTab(QWidget):
         # ========== 3. Tìm SRT ==========
         found_srt = None
 
+        # Nếu đã có audio_file, ưu tiên tìm file .srt cùng tên
+        curr_audio = self.txt_audio_file.text().strip().strip('"')
+        if curr_audio and Path(curr_audio).exists():
+            cand_same = Path(curr_audio).with_suffix(".srt")
+            if cand_same.exists():
+                found_srt = cand_same
+
         # Ưu tiên file SRT mới nhất từ project
-        if self.project:
+        if not found_srt and self.project:
             srt = self.project.get_latest_srt()
             if srt:
                 found_srt = srt
@@ -482,6 +489,10 @@ class VideoTab(QWidget):
 
         # 3. File SRT
         srt = project.get_latest_srt()
+        if not srt and voice:
+            cand_srt = voice.with_suffix(".srt")
+            if cand_srt.exists():
+                srt = cand_srt
         if srt:
             self.txt_srt_file.setText(str(srt.resolve()))
         else:
@@ -528,7 +539,18 @@ class VideoTab(QWidget):
     def set_audio_and_srt(self, audio_path: str, srt_path: str):
         """Được gọi từ MainWindow hoặc TTSTab khi vừa tạo xong voice & srt."""
         if audio_path and Path(audio_path).exists():
-            self.txt_audio_file.setText(str(Path(audio_path).resolve()))
+            p_audio = Path(audio_path).resolve()
+            self.txt_audio_file.setText(str(p_audio))
+            # Nếu srt_path chưa có hoặc không tồn tại, tự tìm file .srt cùng tên
+            if not srt_path or not Path(srt_path).exists():
+                candidate = p_audio.with_suffix(".srt")
+                if candidate.exists():
+                    srt_path = str(candidate.resolve())
+                elif self.project:
+                    proj_srt = self.project.get_latest_srt()
+                    if proj_srt and proj_srt.exists():
+                        srt_path = str(proj_srt.resolve())
+
         if srt_path and Path(srt_path).exists():
             self.txt_srt_file.setText(str(Path(srt_path).resolve()))
         self.generate_default_output_name()

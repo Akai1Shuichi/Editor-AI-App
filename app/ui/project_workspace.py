@@ -133,8 +133,10 @@ class ProjectWorkspace(QWidget):
         self.stack.addWidget(self.workspace_page)
 
         self.tts_tab.send_to_video.connect(self._on_tts_send_to_video)
+        self.tts_tab.voice_generated.connect(self._on_voice_generated)
         self.scene_tab.scene_path_changed.connect(self.video_tab.set_json_file)
         self.scene_tab.continue_to_video.connect(self._on_scene_continue_to_video)
+        self.inner_tabs.currentChanged.connect(self._on_inner_tab_changed)
 
     def show_project_list(self, checked=False, force=False):
         """Quay về danh sách; không cho đổi ngữ cảnh khi worker còn chạy."""
@@ -188,6 +190,15 @@ class ProjectWorkspace(QWidget):
     def _on_tts_send_to_video(self, audio_path: str, srt_path: str):
         self.video_tab.set_audio_and_srt(audio_path, srt_path)
         self.inner_tabs.setCurrentIndex(2)
+
+    def _on_voice_generated(self, audio_path: str, srt_path: str):
+        """Khi tạo voice xong ở tab 2, tự động ghi ngay file voice.mp3 và voice.srt sang tab 4."""
+        self.video_tab.set_audio_and_srt(audio_path, srt_path)
+
+    def _on_inner_tab_changed(self, index: int):
+        """Khi bấm chuyển sang tab xuất video (index 3), tự động quét và điền file mới nhất."""
+        if index == 3 and self.current_project:
+            self.video_tab.auto_detect_defaults()
 
     def _on_scene_continue_to_video(self):
         self.video_tab.analyze_timeline()

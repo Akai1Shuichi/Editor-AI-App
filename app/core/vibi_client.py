@@ -391,14 +391,22 @@ class VibiClient:
         self.download_file(audio_url, audio_path)
 
         transcript_path: Optional[Path] = None
-        transcript_url = result.get("transcript_url") or result.get("srt_url")
+        transcript_url = (
+            result.get("transcript_url")
+            or result.get("srt_url")
+            or result.get("subtitles_url")
+            or result.get("subtitle_url")
+        )
+        srt_name = audio_path.stem + ".srt"
+        candidate_srt = target_dir / srt_name
         if transcript_url:
-            srt_name = audio_path.stem + ".srt"
-            transcript_path = target_dir / srt_name
+            transcript_path = candidate_srt
             try:
                 self.download_file(transcript_url, transcript_path)
             except Exception:
-                transcript_path = None
+                transcript_path = candidate_srt if candidate_srt.exists() else None
+        elif candidate_srt.exists():
+            transcript_path = candidate_srt
 
         return audio_path, transcript_path
 

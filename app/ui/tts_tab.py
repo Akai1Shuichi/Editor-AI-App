@@ -116,6 +116,7 @@ class TTSTab(QWidget):
     """Tab tạo giọng ElevenLabs từ văn bản - Thiết kế gọn gàng, súc tích."""
     request_voice_lookup = pyqtSignal()
     send_to_video = pyqtSignal(str, str)
+    voice_generated = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -608,8 +609,20 @@ class TTSTab(QWidget):
                 self.project.save_metadata()
             p = Path(audio_path)
             self.current_audio_path = p
-            self.current_srt_path = Path(srt_path) if srt_path else None
-            srt_str = f" + Phụ đề {Path(srt_path).name}" if srt_path else ""
+
+            # Đảm bảo nhận diện file phụ đề .srt tương ứng
+            resolved_srt: Optional[Path] = None
+            if srt_path and Path(srt_path).exists():
+                resolved_srt = Path(srt_path)
+            elif p.with_suffix(".srt").exists():
+                resolved_srt = p.with_suffix(".srt")
+            elif self.project:
+                proj_srt = self.project.get_latest_srt()
+                if proj_srt and proj_srt.exists():
+                    resolved_srt = proj_srt
+
+            self.current_srt_path = resolved_srt
+            srt_str = f" + Phụ đề {resolved_srt.name}" if resolved_srt else ""
             self.lbl_player_file.setText(f"{p.name} ({p.stat().st_size:,} bytes){srt_str}")
 
             self.player.setSource(QUrl.fromLocalFile(str(p)))
@@ -617,6 +630,10 @@ class TTSTab(QWidget):
             self.btn_stop.setEnabled(True)
             self.btn_play_pause.setText("Phát")
             self.btn_to_video.setEnabled(True)
+
+            # Tự động cập nhật sang tab xuất video ngay khi tạo xong
+            srt_param = str(resolved_srt.resolve()) if resolved_srt else ""
+            self.voice_generated.emit(str(p.resolve()), srt_param)
         else:
             # Phân biệt hủy vs lỗi thực sự
             is_cancelled = "hủy" in msg.lower() or "cancelled" in msg.lower()
@@ -631,6 +648,8 @@ class TTSTab(QWidget):
     def _on_to_video_clicked(self):
         if self.current_audio_path:
             srt_p = str(self.current_srt_path) if self.current_srt_path else ""
+            if not srt_p and self.current_audio_path.with_suffix(".srt").exists():
+                srt_p = str(self.current_audio_path.with_suffix(".srt").resolve())
             self.send_to_video.emit(str(self.current_audio_path), srt_p)
 
     def toggle_play_pause(self):
