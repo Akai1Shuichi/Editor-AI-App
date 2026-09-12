@@ -172,6 +172,11 @@ class MainWindow(QMainWindow):
         support_layout.addWidget(self.lbl_footer_zalo)
         footer_layout.addWidget(self.footer_support)
         footer_layout.addStretch()
+
+        self.footer_creator = QLabel("© Created by: trtoan")
+        self.footer_creator.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
+        footer_layout.addWidget(self.footer_creator)
+
         root_layout.addWidget(self.app_footer)
 
         # Inter-tab Connections
