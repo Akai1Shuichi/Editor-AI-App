@@ -46,7 +46,7 @@ class _SilentAudioOutput:
 
 
 class _DeferredAccountCheckThread(QObject):
-    result_ready = pyqtSignal(bool, dict, str)
+    result_ready = pyqtSignal(str, bool, dict, str)
     last_instance = None
 
     def __init__(self, api_key=None):
@@ -250,7 +250,9 @@ class StandaloneToolsUiTests(unittest.TestCase):
                 _DeferredAccountCheckThread.last_instance.api_key, "invalid-key"
             )
 
-            tab.worker.result_ready.emit(False, {}, "API Key không hợp lệ")
+            tab.worker.result_ready.emit(
+                "invalid-key", False, {}, "API Key không hợp lệ"
+            )
 
             self.assertEqual(config.VIBI_API_KEY, "saved-key")
             save_env.assert_not_called()
@@ -285,7 +287,7 @@ class StandaloneToolsUiTests(unittest.TestCase):
             save_env.assert_not_called()
             self.assertEqual(saved_signals, [])
 
-            tab.worker.result_ready.emit(True, account_info, "")
+            tab.worker.result_ready.emit("valid-key", True, account_info, "")
 
             save_env.assert_called_once_with("VIBI_API_KEY", "valid-key")
             self.assertEqual(config.VIBI_API_KEY, "valid-key")

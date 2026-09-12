@@ -19,7 +19,7 @@ ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 
 class AccountCheckThread(QThread):
     """Worker kiểm tra số dư và thông tin tài khoản Vibi."""
-    result_ready = pyqtSignal(bool, dict, str)
+    result_ready = pyqtSignal(str, bool, dict, str)
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__()
@@ -28,14 +28,19 @@ class AccountCheckThread(QThread):
     def run(self):
         client = VibiClient(api_key=self.api_key)
         if not client.is_configured():
-            self.result_ready.emit(False, {}, "Vui lòng nhập Voice API Key trước khi kiểm tra!")
+            self.result_ready.emit(
+                self.api_key or "",
+                False,
+                {},
+                "Vui lòng nhập Voice API Key trước khi kiểm tra!",
+            )
             return
 
         try:
             info = client.get_account_info()
-            self.result_ready.emit(True, info, "")
+            self.result_ready.emit(self.api_key or "", True, info, "")
         except Exception as e:
-            self.result_ready.emit(False, {}, str(e))
+            self.result_ready.emit(self.api_key or "", False, {}, str(e))
 
 
 class SettingsTab(QWidget):
@@ -50,6 +55,7 @@ class SettingsTab(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.worker: Optional[AccountCheckThread] = None
         self._pending_api_key: Optional[str] = None
+        self._active_check_key: Optional[str] = None
         self.init_ui()
 
     def init_ui(self):
@@ -215,10 +221,8 @@ class SettingsTab(QWidget):
             QMessageBox.warning(self, "Chưa có Key", "Vui lòng nhập Voice API Key!")
             return
 
-        config.save_env_variable("VIBI_API_KEY", key)
-        self.api_key_saved.emit(key)
-        QMessageBox.information(self, "Đã lưu", "Đã lưu Voice API Key thành công!")
-        self.check_account()
+        self._pending_api_key = key
+        self._start_account_check(key)
 
     def check_account(self):
         key = self.edit_key.text().strip()
@@ -230,6 +234,7 @@ class SettingsTab(QWidget):
         self._start_account_check(key)
 
     def _start_account_check(self, key: str):
+        self._active_check_key = key
         self.btn_save_key.setEnabled(False)
         self.lbl_credits.setText("Đang kiểm tra...")
 
@@ -237,13 +242,16 @@ class SettingsTab(QWidget):
         self.worker.result_ready.connect(self.on_account_checked)
         self.worker.start()
 
-    def on_account_checked(self, success: bool, info: dict, error_msg: str):
+    def on_account_checked(self, checked_key: str, success: bool, info: dict, error_msg: str):
+        if checked_key != self._active_check_key:
+            return
+
+        self._active_check_key = None
         self.btn_save_key.setEnabled(True)
         pending_api_key = self._pending_api_key
-        self._pending_api_key = None
 
         if success:
-            if pending_api_key is not None:
+            if pending_api_key == checked_key:
                 config.save_env_variable("VIBI_API_KEY", pending_api_key)
                 config.VIBI_API_KEY = pending_api_key
                 self.api_key_saved.emit(pending_api_key)
@@ -252,6 +260,7 @@ class SettingsTab(QWidget):
                     "Đã lưu",
                     "Đã kiểm tra và lưu Voice API Key thành công!",
                 )
+                self._pending_api_key = None
 
             credits = info.get("credit_balance")
             if credits is None:
@@ -265,6 +274,8 @@ class SettingsTab(QWidget):
             self.lbl_email.setText(f"Email: {email}")
             self.account_updated.emit(info)
         else:
+            if pending_api_key == checked_key:
+                self._pending_api_key = None
             self.lbl_credits.setText("Không thể kết nối")
             self.lbl_credits.setStyleSheet("font-size: 13px; font-weight: 600; color: #f87171;")
             QMessageBox.critical(self, "Lỗi kiểm tra", error_msg)
