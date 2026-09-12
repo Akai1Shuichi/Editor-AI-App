@@ -62,3 +62,5 @@ $RECYCLE.BIN/
 *.swo
 documents/vibi
 tests/
+build/
+dist/
