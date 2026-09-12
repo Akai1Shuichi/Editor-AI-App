@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from app import config
 from app.core.vibi_client import VibiClient, VibiAPIError
+from app.core.tts_credits import format_credit_summary
 from app.core.standalone_state import (
     StandaloneStateStore,
     build_output_folder_name,
@@ -136,6 +137,7 @@ class TTSTab(QWidget):
         self.standalone_store: Optional[StandaloneStateStore] = None
         self.standalone_output_dir: Optional[Path] = None
         self.current_run_dir: Optional[Path] = None
+        self.credit_balance: Optional[int] = None
         self._restoring_standalone = False
         self._standalone_save_timer: Optional[QTimer] = None
 
@@ -268,6 +270,11 @@ class TTSTab(QWidget):
         """Bật/tắt chế độ tự động lưu cho tab TTS."""
         self.auto_save = enabled
 
+    def set_credit_balance(self, balance: int) -> None:
+        """Update the account balance used by the live credit estimate."""
+        self.credit_balance = balance
+        self.on_text_changed()
+
     def set_project(self, project):
         """Cập nhật thông tin dự án hiện tại."""
         previous_slug = getattr(self.project, "slug", None)
@@ -384,8 +391,27 @@ class TTSTab(QWidget):
         text_top = QHBoxLayout()
         lbl_text = QLabel("Văn bản cần đọc:")
         lbl_text.setProperty("class", "section_label")
-        self.lbl_char_count = QLabel("0 ký tự")
-        self.lbl_char_count.setStyleSheet("color: #6b7280; font-size: 11px;")
+        self.lbl_credit_help = QLabel("?")
+        self.lbl_credit_help.setFixedSize(18, 18)
+        self.lbl_credit_help.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_credit_help.setAccessibleName("Cách tính credits")
+        self.lbl_credit_help.setToolTip(
+            "Cách tính credits:\n"
+            "- ElevenLabs Turbo/Flash: 0.5 credits mỗi ký tự\n"
+            "- ElevenLabs các model khác: 1 credit mỗi ký tự\n"
+            "- MiniMax Turbo: 0.6 credits mỗi ký tự\n"
+            "- MiniMax HD: 1 credit mỗi ký tự\n"
+            "- CapCut: 0.01 credits mỗi ký tự"
+        )
+        self.lbl_credit_help.setStyleSheet(
+            "color: #cbd5e1; background-color: #1c2230; "
+            "border: 1px solid #64748b; border-radius: 9px; "
+            "font-size: 11px; font-weight: 700;"
+        )
+        self.lbl_char_count = QLabel("0 chars · 0/-- credits")
+        self.lbl_char_count.setStyleSheet(
+            "color: #cbd5e1; font-size: 13px; font-weight: 600;"
+        )
 
         text_top.addWidget(lbl_text)
         text_top.addSpacing(10)
@@ -393,7 +419,6 @@ class TTSTab(QWidget):
         self.lbl_project_badge.setStyleSheet("color: #6b7280; font-size: 11px;")
         text_top.addWidget(self.lbl_project_badge)
         text_top.addStretch()
-        text_top.addWidget(self.lbl_char_count)
         tts_layout.addLayout(text_top)
 
         self.txt_input = QTextEdit()
@@ -401,6 +426,14 @@ class TTSTab(QWidget):
         self.txt_input.textChanged.connect(self.on_text_changed)
         self.txt_input.setMinimumHeight(120)
         tts_layout.addWidget(self.txt_input, stretch=2)
+
+        credit_row = QHBoxLayout()
+        credit_row.setContentsMargins(0, 0, 2, 0)
+        credit_row.setSpacing(6)
+        credit_row.addStretch()
+        credit_row.addWidget(self.lbl_credit_help)
+        credit_row.addWidget(self.lbl_char_count)
+        tts_layout.addLayout(credit_row)
 
         # 2. Cấu hình Voice & Model (Panel gọn gàng)
         cfg_panel = QFrame()
@@ -426,6 +459,7 @@ class TTSTab(QWidget):
         lbl_m.setProperty("class", "section_label")
         self.combo_model = QComboBox()
         self.combo_model.addItems(["eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5"])
+        self.combo_model.currentIndexChanged.connect(self.on_text_changed)
 
         lbl_l = QLabel("Ngôn ngữ:")
         lbl_l.setProperty("class", "section_label")
@@ -739,6 +773,7 @@ class TTSTab(QWidget):
 
         self.combo_model.blockSignals(False)
         self.combo_lang.blockSignals(False)
+        self.on_text_changed()
 
     def on_voice_picked_from_lookup(self, voice_id: str, voice_name: str, provider: str = "elevenlabs", language_code: str = "vi"):
         """Khi chọn dùng giọng từ thư viện, tự động thiết lập Provider, Voice ID và chuyển về tab Tạo giọng."""
@@ -760,12 +795,13 @@ class TTSTab(QWidget):
 
         self.tab_widget.setCurrentIndex(0)
 
-    def on_text_changed(self):
+    def on_text_changed(self, *_args):
         t = self.txt_input.toPlainText()
-        c = len(t)
-        chunks = VibiClient.split_long_text(t, max_chars=3500) if t.strip() else []
-        chunk_str = f" | {len(chunks)} đoạn" if len(chunks) > 1 else ""
-        self.lbl_char_count.setText(f"{c:,} ký tự{chunk_str}")
+        provider = self.combo_provider.currentData() or "elevenlabs"
+        model = self.combo_model.currentText()
+        self.lbl_char_count.setText(
+            format_credit_summary(t, provider, model, self.credit_balance)
+        )
         if self.auto_save and self.project:
             self.project.tts_script = t
             self.project.save_metadata()

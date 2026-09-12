@@ -154,6 +154,8 @@ class MainWindow(QMainWindow):
         credits = info.get("credit_balance")
         if credits is None:
             credits = info.get("credits", 0)
+        self.tts_tab.set_credit_balance(credits)
+        self.project_workspace.tts_tab.set_credit_balance(credits)
         self.api_chip.setText(f"● Voice API: {credits:,} credits")
         self.api_chip.setStyleSheet("background-color: #064e3b; border: 1px solid #065f46; color: #34d399; border-radius: 6px; padding: 6px 10px; font-size: 11px; font-weight: 600;")
 
