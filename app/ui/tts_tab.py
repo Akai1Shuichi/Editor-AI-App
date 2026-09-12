@@ -119,6 +119,14 @@ class TTSWorker(QThread):
             self.task_finished.emit(False, "", "", str(e))
 
 
+class VoiceSelectorComboBox(QComboBox):
+    """A read-only voice selector that routes users to voice lookup."""
+    lookup_requested = pyqtSignal()
+
+    def showPopup(self) -> None:
+        self.lookup_requested.emit()
+
+
 class TTSTab(QWidget):
     """Tab tạo giọng ElevenLabs từ văn bản - Thiết kế gọn gàng, súc tích."""
     request_voice_lookup = pyqtSignal()
@@ -138,6 +146,17 @@ class TTSTab(QWidget):
         self.standalone_output_dir: Optional[Path] = None
         self.current_run_dir: Optional[Path] = None
         self.credit_balance: Optional[int] = None
+        self.voice_ids_by_provider: Dict[str, str] = {
+            "elevenlabs": "",
+            "minimax": "",
+            "capcut": "",
+        }
+        self.voice_names_by_provider: Dict[str, str] = {
+            "elevenlabs": "",
+            "minimax": "",
+            "capcut": "",
+        }
+        self._active_voice_provider = "elevenlabs"
         self._restoring_standalone = False
         self._standalone_save_timer: Optional[QTimer] = None
 
@@ -176,7 +195,7 @@ class TTSTab(QWidget):
 
         for signal in (
             self.combo_provider.currentIndexChanged,
-            self.edit_voice_id.textChanged,
+            self.combo_voice.currentIndexChanged,
             self.combo_model.currentIndexChanged,
             self.combo_lang.currentIndexChanged,
             self.slider_st.valueChanged,
@@ -200,7 +219,9 @@ class TTSTab(QWidget):
             {
                 "script": self.txt_input.toPlainText(),
                 "provider": self.combo_provider.currentData() or "elevenlabs",
-                "voice_id": self.edit_voice_id.text().strip(),
+                "voice_id": self.current_voice_id(),
+                "voice_ids": self._voice_ids_snapshot(),
+                "voice_names": self._voice_names_snapshot(),
                 "model": self.combo_model.currentText(),
                 "language": self.combo_lang.currentText(),
                 "stability": self.slider_st.value(),
@@ -227,12 +248,12 @@ class TTSTab(QWidget):
         self._restoring_standalone = True
         try:
             self.txt_input.setPlainText(str(state.get("script", "")))
+            self._restore_voice_ids(state)
             provider = state.get("provider", "elevenlabs")
             for index in range(self.combo_provider.count()):
                 if self.combo_provider.itemData(index) == provider:
                     self.combo_provider.setCurrentIndex(index)
                     break
-            self.edit_voice_id.setText(str(state.get("voice_id", "")))
             self.combo_model.setCurrentText(str(state.get("model", "")))
             self.combo_lang.setCurrentText(str(state.get("language", "")))
             if "stability" in state:
@@ -262,7 +283,6 @@ class TTSTab(QWidget):
                 self.player.setSource(QUrl.fromLocalFile(str(audio_path)))
                 self.btn_play_pause.setEnabled(True)
                 self.btn_stop.setEnabled(True)
-            self.lbl_status.setText("Đã khôi phục phiên làm việc gần nhất.")
         finally:
             self._restoring_standalone = False
 
@@ -321,6 +341,7 @@ class TTSTab(QWidget):
 
         # 2. Khôi phục cấu hình Voice
         cfg = project.tts_settings or {}
+        self._restore_voice_ids(cfg)
         if cfg:
             saved_prov = cfg.get("provider", "elevenlabs")
             for i in range(self.combo_provider.count()):
@@ -328,8 +349,6 @@ class TTSTab(QWidget):
                     self.combo_provider.setCurrentIndex(i)
                     break
 
-            if "voice_id" in cfg:
-                self.edit_voice_id.setText(cfg["voice_id"])
             if "model" in cfg:
                 self.combo_model.setCurrentText(cfg["model"])
             if "lang" in cfg:
@@ -480,14 +499,13 @@ class TTSTab(QWidget):
         voice_row.setSpacing(8)
         lbl_vid = QLabel("Voice ID:")
         lbl_vid.setProperty("class", "section_label")
-        self.edit_voice_id = QLineEdit(config.DEFAULT_VIBI_VOICE_ID)
-        self.edit_voice_id.setPlaceholderText("ID giọng nói...")
-        self.btn_browse = QPushButton("🔍 Tra cứu Voice...")
-        self.btn_browse.clicked.connect(self.open_voice_lookup)
+        self.combo_voice = VoiceSelectorComboBox()
+        self.combo_voice.setToolTip("Bấm để mở tab Tra cứu Voice")
+        self.combo_voice.lookup_requested.connect(self.open_voice_lookup)
+        self._display_selected_voice()
 
         voice_row.addWidget(lbl_vid)
-        voice_row.addWidget(self.edit_voice_id, stretch=1)
-        voice_row.addWidget(self.btn_browse)
+        voice_row.addWidget(self.combo_voice, stretch=1)
         cp_layout.addLayout(voice_row)
 
         # Dòng 3: Sliders & Phụ đề
@@ -689,24 +707,66 @@ class TTSTab(QWidget):
                 self.voice_lookup_tab.load_voices()
 
     def _on_st_slider_changed(self, v: int):
-        provider = self.combo_provider.currentData() or "elevenlabs"
-        if provider in ("minimax", "capcut"):
-            self.lbl_st_val.setText(f"{v:+d}" if v != 0 else "0")
-        else:
-            self.lbl_st_val.setText(f"{v / 100.0:.2f}")
+        self.lbl_st_val.setText(f"{v / 100.0:.2f}")
 
     def _on_sim_slider_changed(self, v: int):
-        provider = self.combo_provider.currentData() or "elevenlabs"
-        if provider == "minimax":
-            self.lbl_sim_val.setText(f"{v / 100.0:.1f}x")
-        else:
-            self.lbl_sim_val.setText(f"{v / 100.0:.2f}")
+        self.lbl_sim_val.setText(f"{v / 100.0:.2f}")
 
     def _on_sp_slider_changed(self, v: int):
         self.lbl_sp_val.setText(f"{v / 100.0:.2f}x")
 
+    def current_voice_id(self) -> str:
+        return str(self.combo_voice.currentData() or "").strip()
+
+    def _voice_ids_snapshot(self) -> Dict[str, str]:
+        return dict(self.voice_ids_by_provider)
+
+    def _voice_names_snapshot(self) -> Dict[str, str]:
+        return dict(self.voice_names_by_provider)
+
+    def _display_selected_voice(self) -> None:
+        voice_id = self.voice_ids_by_provider.get(self._active_voice_provider, "")
+        voice_name = self.voice_names_by_provider.get(self._active_voice_provider, "")
+        self.combo_voice.blockSignals(True)
+        self.combo_voice.clear()
+        self.combo_voice.addItem(voice_name or "Chọn giọng nói…", voice_id)
+        self.combo_voice.blockSignals(False)
+
+    def _restore_voice_ids(self, settings: Dict[str, Any]) -> None:
+        restored = {
+            "elevenlabs": "",
+            "minimax": "",
+            "capcut": "",
+        }
+        restored_names = {provider: "" for provider in restored}
+        saved_voice_ids = settings.get("voice_ids")
+        if isinstance(saved_voice_ids, dict):
+            for provider in restored:
+                value = saved_voice_ids.get(provider)
+                if value is not None:
+                    restored[provider] = str(value).strip()
+
+        saved_voice_names = settings.get("voice_names")
+        if isinstance(saved_voice_names, dict):
+            for provider in restored_names:
+                value = saved_voice_names.get(provider)
+                if value is not None:
+                    restored_names[provider] = str(value).strip()
+
+        saved_provider = str(settings.get("provider", "elevenlabs"))
+        if "voice_id" in settings and not (
+            isinstance(saved_voice_ids, dict) and saved_provider in saved_voice_ids
+        ):
+            if saved_provider in restored:
+                restored[saved_provider] = str(settings["voice_id"]).strip()
+
+        self.voice_ids_by_provider = restored
+        self.voice_names_by_provider = restored_names
+        self._display_selected_voice()
+
     def on_provider_changed(self):
         provider = self.combo_provider.currentData() or "elevenlabs"
+        self._active_voice_provider = provider
         self.combo_model.blockSignals(True)
         self.combo_lang.blockSignals(True)
         self.combo_model.clear()
@@ -715,62 +775,32 @@ class TTSTab(QWidget):
         if provider == "minimax":
             self.combo_model.addItems(["speech-2.8-hd", "speech-2.8-turbo", "speech-2.6-hd", "speech-2.6-turbo", "speech-02-hd", "speech-01-hd"])
             self.combo_lang.addItems(["Vietnamese", "English", "Chinese (Mandarin)", "Japanese", "French", "German", "Spanish"])
-            # MiniMax: Pitch (-12..12), Volume (0.1..2.0), Speed (0.5..2.0)
-            self.lbl_st.setText("Pitch:")
-            self.slider_st.setRange(-12, 12)
-            self.slider_st.setValue(0)
-            self.lbl_st_val.setText("0")
-
-            self.lbl_sim.setText("Volume:")
-            self.slider_sim.setEnabled(True)
-            self.slider_sim.setRange(10, 200)
-            self.slider_sim.setValue(100)
-            self.lbl_sim_val.setText("1.0x")
-
-            self.slider_sp.setRange(50, 200)
-            self.slider_sp.setValue(100)
-            self.lbl_sp_val.setText("1.00x")
 
         elif provider == "capcut":
             self.combo_model.addItems(["capcut"])
             self.combo_lang.addItems(["vi", "en", "zh", "id", "es", "pt", "ja", "th"])
-            # CapCut: Pitch (-12..12), Speed (0.5..2.0)
-            self.lbl_st.setText("Pitch:")
-            self.slider_st.setRange(-12, 12)
-            self.slider_st.setValue(0)
-            self.lbl_st_val.setText("0")
-
-            self.lbl_sim.setText("Độ tương đồng:")
-            self.slider_sim.setEnabled(False)
-            self.slider_sim.setRange(0, 100)
-            self.slider_sim.setValue(75)
-            self.lbl_sim_val.setText("N/A")
-
-            self.slider_sp.setRange(50, 200)
-            self.slider_sp.setValue(100)
-            self.lbl_sp_val.setText("1.00x")
 
         else:
             # ElevenLabs
             self.combo_model.addItems(["eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5"])
             self.combo_lang.addItems(["vi", "en", "ja", "ko", "zh", "fr", "de", "es"])
-            self.lbl_st.setText("Độ ổn định:")
-            self.slider_st.setRange(0, 100)
-            self.slider_st.setValue(int(config.DEFAULT_VIBI_STABILITY * 100))
-            self.lbl_st_val.setText(f"{config.DEFAULT_VIBI_STABILITY:.2f}")
 
-            self.lbl_sim.setText("Độ tương đồng:")
-            self.slider_sim.setEnabled(True)
-            self.slider_sim.setRange(0, 100)
-            self.slider_sim.setValue(int(config.DEFAULT_VIBI_SIMILARITY * 100))
-            self.lbl_sim_val.setText(f"{config.DEFAULT_VIBI_SIMILARITY:.2f}")
+        # Giữ cùng bộ điều khiển trực quan cho mọi nền tảng TTS.
+        self.lbl_st.setText("Độ ổn định:")
+        self.slider_st.setRange(0, 100)
+        self.slider_st.setValue(int(config.DEFAULT_VIBI_STABILITY * 100))
 
-            self.slider_sp.setRange(70, 150)
-            self.slider_sp.setValue(int(config.DEFAULT_VIBI_SPEED * 100))
-            self.lbl_sp_val.setText(f"{config.DEFAULT_VIBI_SPEED:.2f}x")
+        self.lbl_sim.setText("Độ tương đồng:")
+        self.slider_sim.setEnabled(True)
+        self.slider_sim.setRange(0, 100)
+        self.slider_sim.setValue(int(config.DEFAULT_VIBI_SIMILARITY * 100))
+
+        self.slider_sp.setRange(70, 150)
+        self.slider_sp.setValue(int(config.DEFAULT_VIBI_SPEED * 100))
 
         self.combo_model.blockSignals(False)
         self.combo_lang.blockSignals(False)
+        self._display_selected_voice()
         self.on_text_changed()
 
     def on_voice_picked_from_lookup(self, voice_id: str, voice_name: str, provider: str = "elevenlabs", language_code: str = "vi"):
@@ -806,9 +836,9 @@ class TTSTab(QWidget):
         self._schedule_standalone_save()
 
     def set_selected_voice_id(self, voice_id: str, voice_name: Optional[str] = None):
-        self.edit_voice_id.setText(voice_id)
-        if voice_name:
-            self.lbl_status.setText(f"✓ Đã chọn giọng: {voice_name} ({voice_id})")
+        self.voice_ids_by_provider[self._active_voice_provider] = voice_id.strip()
+        self.voice_names_by_provider[self._active_voice_provider] = (voice_name or "").strip()
+        self._display_selected_voice()
 
     def start_tts(self):
         text = self.txt_input.toPlainText().strip()
@@ -816,7 +846,7 @@ class TTSTab(QWidget):
             QMessageBox.warning(self, "Chưa nhập văn bản", "Vui lòng nhập văn bản cần chuyển thành giọng nói!")
             return
 
-        voice_id = self.edit_voice_id.text().strip()
+        voice_id = self.current_voice_id()
         if not voice_id:
             QMessageBox.warning(self, "Thiếu Voice ID", "Vui lòng chọn hoặc nhập Voice ID!")
             return
@@ -828,13 +858,13 @@ class TTSTab(QWidget):
         if provider == "minimax":
             settings = {
                 "speed": self.slider_sp.value() / 100.0,
-                "pitch": self.slider_st.value(),
+                "pitch": (self.slider_st.value() - 50) * 24 / 100,
                 "vol": self.slider_sim.value() / 100.0
             }
         elif provider == "capcut":
             settings = {
                 "speed": self.slider_sp.value() / 100.0,
-                "pitch": self.slider_st.value()
+                "pitch": (self.slider_st.value() - 50) * 24 / 100
             }
         else:
             settings = {
@@ -906,7 +936,9 @@ class TTSTab(QWidget):
                     self.txt_input.toPlainText(),
                     {
                         "provider": provider,
-                        "voice_id": self.edit_voice_id.text().strip(),
+                        "voice_id": self.current_voice_id(),
+                        "voice_ids": self._voice_ids_snapshot(),
+                        "voice_names": self._voice_names_snapshot(),
                         "model": self.combo_model.currentText(),
                         "lang": self.combo_lang.currentText(),
                         "speed": self.slider_sp.value() / 100.0,
@@ -1045,7 +1077,9 @@ class TTSTab(QWidget):
                 self.txt_input.toPlainText(),
                 {
                     "provider": provider,
-                    "voice_id": self.edit_voice_id.text().strip(),
+                    "voice_id": self.current_voice_id(),
+                    "voice_ids": self._voice_ids_snapshot(),
+                    "voice_names": self._voice_names_snapshot(),
                     "model": self.combo_model.currentText(),
                     "lang": self.combo_lang.currentText(),
                     "speed": self.slider_sp.value() / 100.0,

@@ -110,6 +110,14 @@ class SettingsTab(QWidget):
         key_row.addWidget(self.btn_save_key)
         ap_layout.addLayout(key_row)
 
+        self.lbl_buy_api_key = QLabel(
+            'Mua API Voice Key tại đây: '
+            '<a href="https://t.me/DichVuIT_bot">@DichVuIT_bot</a>'
+        )
+        self.lbl_buy_api_key.setOpenExternalLinks(True)
+        self.lbl_buy_api_key.setStyleSheet("color: #9ca3af; font-size: 12px;")
+        ap_layout.addWidget(self.lbl_buy_api_key)
+
         # Thông tin tài khoản (Dòng thẻ thông tin gọn gàng)
         self.info_box = QFrame()
         self.info_box.setStyleSheet("background-color: #14151b; border: 1px solid #23252d; border-radius: 6px; padding: 8px;")
