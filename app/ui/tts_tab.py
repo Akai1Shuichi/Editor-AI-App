@@ -22,6 +22,7 @@ from app.core.standalone_state import (
     resolve_new_output_folder,
 )
 from app.ui.voice_lookup_tab import VoiceLookupTab
+from app.ui.widgets import ToggleSwitch
 
 class TTSWorker(QThread):
     """Worker tạo giọng nói qua Vibi API."""
@@ -567,10 +568,6 @@ class TTSTab(QWidget):
         self.slider_sp.setFixedWidth(75)
         self.slider_sp.valueChanged.connect(self._on_sp_slider_changed)
 
-        # SRT Checkbox
-        self.chk_srt = QCheckBox("Xuất phụ đề SRT")
-        self.chk_srt.setChecked(True)
-
         row2.addWidget(self.lbl_st)
         row2.addWidget(self.slider_st)
         row2.addWidget(self.lbl_st_val)
@@ -582,11 +579,32 @@ class TTSTab(QWidget):
         row2.addWidget(self.lbl_sp)
         row2.addWidget(self.slider_sp)
         row2.addWidget(self.lbl_sp_val)
-        row2.addSpacing(10)
-        row2.addWidget(self.chk_srt)
         row2.addStretch()
 
         cp_layout.addLayout(row2)
+
+        # Dòng 4: Xuất file phụ đề SRT (Toggle Switch ở dưới)
+        srt_row = QHBoxLayout()
+        srt_row.setSpacing(10)
+        srt_row.setContentsMargins(0, 4, 0, 2)
+
+        self.chk_srt = ToggleSwitch()
+        self.chk_srt.setChecked(True)
+        self.chk_srt.setToolTip("Bật/tắt xuất file phụ đề SRT (thêm ~15% credits)")
+
+        self.lbl_srt_text = QLabel(
+            '<span style="font-size: 13px; font-weight: 600; color: #e2e8f0;">Xuất file phụ đề SRT</span>'
+            '&nbsp;&nbsp;'
+            '<span style="font-size: 12px; font-weight: 500; color: #94a3b8;">+15% credits</span>'
+        )
+        self.lbl_srt_text.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.lbl_srt_text.setToolTip("Bật/tắt xuất file phụ đề SRT (thêm ~15% credits)")
+        self.lbl_srt_text.mousePressEvent = lambda _event: self.chk_srt.toggle()
+
+        srt_row.addWidget(self.chk_srt)
+        srt_row.addWidget(self.lbl_srt_text)
+        srt_row.addStretch()
+        cp_layout.addLayout(srt_row)
         tts_layout.addWidget(cfg_panel)
 
         self.output_controls = QWidget()

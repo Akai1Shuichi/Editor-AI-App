@@ -27,31 +27,7 @@ from app.ui.scene_tab import SceneTab
 from app.ui.tts_tab import TTSTab
 from app.ui.video_tab import VideoTab
 from app.ui.watermark_tab import WatermarkTab
-
-
-class ToggleSwitch(QCheckBox):
-    """Công tắc gọn dùng cho các tùy chọn bật/tắt trên thanh công cụ."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedSize(38, 22)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-
-    def hitButton(self, pos):
-        return self.rect().contains(pos)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        track_color = QColor("#4f7cff" if self.isChecked() else "#343a46")
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(track_color)
-        painter.drawRoundedRect(QRectF(1, 3, 36, 16), 8, 8)
-
-        knob_x = 27 if self.isChecked() else 11
-        painter.setBrush(QColor("#ffffff" if self.isChecked() else "#a7afbe"))
-        painter.drawEllipse(QPointF(knob_x, 11), 6, 6)
+from app.ui.widgets import ToggleSwitch
 
 
 class ProjectWorkspace(QWidget):
