@@ -375,7 +375,7 @@ class VoiceLookupTab(QWidget):
         self.table.setColumnWidth(2, 160)
         self.table.setColumnWidth(3, 80)
         self.table.setColumnWidth(4, 150)
-        self.table.setColumnWidth(5, 285)
+        self.table.setColumnWidth(5, 220)
         self.table.horizontalHeader().setMinimumSectionSize(60)
         self.table.horizontalHeader().setStretchLastSection(False)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -592,7 +592,7 @@ class VoiceLookupTab(QWidget):
             item_lang.setToolTip(f"Ngôn ngữ / Thẻ:\n{lang}")
             self.table.setItem(row, 4, item_lang)
 
-            # Cột 5: Thao tác (Nghe thử, Dùng giọng, Copy ID, Mặc định)
+            # Cột 5: Thao tác (Nghe thử, Dùng giọng, Copy ID)
             action_widget = QWidget()
             a_layout = QHBoxLayout(action_widget)
             a_layout.setContentsMargins(4, 2, 4, 2)
@@ -627,18 +627,9 @@ class VoiceLookupTab(QWidget):
             btn_copy.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_copy.clicked.connect(lambda _, vid=v_id: self.copy_id(vid))
 
-            # Nút Mặc định
-            btn_def = QPushButton("Mặc định")
-            btn_def.setObjectName("btn_subtle")
-            btn_def.setMinimumWidth(64)
-            btn_def.setMaximumWidth(72)
-            btn_def.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_def.clicked.connect(lambda _, vid=v_id: self.set_default(vid))
-
             a_layout.addWidget(btn_play)
             a_layout.addWidget(btn_use)
             a_layout.addWidget(btn_copy)
-            a_layout.addWidget(btn_def)
 
             self.table.setCellWidget(row, 5, action_widget)
 
@@ -692,8 +683,3 @@ class VoiceLookupTab(QWidget):
         clipboard = QGuiApplication.clipboard()
         clipboard.setText(text)
         self.lbl_status.setText(f"Đã sao chép Voice ID: {text}")
-
-    def set_default(self, voice_id: str):
-        config.save_env_variable("DEFAULT_VIBI_VOICE_ID", voice_id)
-        config.DEFAULT_VIBI_VOICE_ID = voice_id
-        self.lbl_status.setText(f"Đã lưu Voice ID mặc định: {voice_id}")

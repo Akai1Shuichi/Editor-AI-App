@@ -201,9 +201,17 @@ class ProjectTab(QWidget):
 
         self.table = QTableWidget()
         self.table.setObjectName("project_table")
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(
-            ["TÊN DỰ ÁN", "TỶ LỆ", "ẢNH", "GIỌNG NÓI", "VIDEO", "CẬP NHẬT"]
+            [
+                "TÊN DỰ ÁN",
+                "TỶ LỆ",
+                "ẢNH",
+                "GIỌNG NÓI",
+                "VIDEO",
+                "CẬP NHẬT",
+                "THAO TÁC",
+            ]
         )
         self.table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.Stretch
@@ -215,6 +223,10 @@ class ProjectTab(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(
             5, QHeaderView.ResizeMode.ResizeToContents
         )
+        self.table.horizontalHeader().setSectionResizeMode(
+            6, QHeaderView.ResizeMode.Fixed
+        )
+        self.table.horizontalHeader().resizeSection(6, 200)
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(False)
@@ -247,29 +259,6 @@ class ProjectTab(QWidget):
         empty_layout.addStretch()
         self.content_stack.addWidget(empty)
         layout.addWidget(self.content_stack, stretch=1)
-
-        self.action_bar = QFrame()
-        self.action_bar.setObjectName("project_action_bar")
-        action_layout = QHBoxLayout(self.action_bar)
-        action_layout.setContentsMargins(12, 8, 10, 8)
-        action_layout.setSpacing(8)
-        self.lbl_selected = QLabel()
-        self.lbl_selected.setObjectName("selected_project_label")
-        action_layout.addWidget(self.lbl_selected)
-        action_layout.addStretch()
-        self.btn_folder = QPushButton("Mở thư mục")
-        self.btn_folder.clicked.connect(self.open_selected_folder)
-        self.btn_delete = QPushButton("Xóa…")
-        self.btn_delete.setObjectName("btn_danger")
-        self.btn_delete.clicked.connect(self.delete_selected_project)
-        self.btn_open = QPushButton("Mở dự án  →")
-        self.btn_open.setObjectName("btn_primary")
-        self.btn_open.clicked.connect(self.open_selected_project)
-        action_layout.addWidget(self.btn_folder)
-        action_layout.addWidget(self.btn_delete)
-        action_layout.addWidget(self.btn_open)
-        self.action_bar.setVisible(False)
-        layout.addWidget(self.action_bar)
 
     def eventFilter(self, watched, event):
         if (
@@ -363,6 +352,29 @@ class ProjectTab(QWidget):
             )
             self.table.setItem(row, 5, updated)
 
+            actions = QWidget()
+            actions_layout = QHBoxLayout(actions)
+            actions_layout.setContentsMargins(16, 5, 8, 5)
+            actions_layout.setSpacing(8)
+
+            folder_button = QPushButton("Mở thư mục")
+            folder_button.setFixedWidth(102)
+            folder_button.setToolTip(f"Mở thư mục dự án {project.name}")
+            folder_button.clicked.connect(
+                lambda _, slug=project.slug: self.open_project_folder(slug)
+            )
+            actions_layout.addWidget(folder_button)
+
+            delete_button = QPushButton("Xóa")
+            delete_button.setFixedWidth(50)
+            delete_button.setObjectName("btn_danger")
+            delete_button.setToolTip(f"Xóa dự án {project.name}")
+            delete_button.clicked.connect(
+                lambda _, slug=project.slug: self.delete_project(slug)
+            )
+            actions_layout.addWidget(delete_button)
+            self.table.setCellWidget(row, 6, actions)
+
             if project.slug == selected_slug:
                 selected_row = row
 
@@ -371,7 +383,6 @@ class ProjectTab(QWidget):
             self.table.selectRow(selected_row)
         else:
             self.selected_slug = None
-            self.action_bar.setVisible(False)
 
     @staticmethod
     def _format_date(value: str) -> str:
@@ -398,15 +409,12 @@ class ProjectTab(QWidget):
         rows = self.table.selectionModel().selectedRows()
         if not rows:
             self.selected_slug = None
-            self.action_bar.setVisible(False)
             return
 
         project = self._project_for_row(rows[0].row())
         if not project:
             return
         self.selected_slug = project.slug
-        self.lbl_selected.setText(f"Đã chọn:  {project.name}")
-        self.action_bar.setVisible(True)
 
     def _on_cell_clicked(self, row: int, column: int):
         if column == 5:
@@ -442,13 +450,13 @@ class ProjectTab(QWidget):
         self.selected_slug = project.slug
         self.project_activated.emit(project.slug)
 
-    def open_selected_folder(self):
-        project = self._selected_project()
+    def open_project_folder(self, slug: str):
+        project = next((p for p in self.visible_projects if p.slug == slug), None)
         if project:
             self.open_folder(project.path)
 
-    def delete_selected_project(self):
-        project = self._selected_project()
+    def delete_project(self, slug: str):
+        project = next((p for p in self.visible_projects if p.slug == slug), None)
         if not project:
             return
         reply = QMessageBox.question(

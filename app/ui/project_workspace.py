@@ -4,9 +4,10 @@ import sys
 from datetime import datetime
 from typing import Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QAction
+from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
+from PyQt6.QtGui import QAction, QColor, QPainter
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QInputDialog,
@@ -26,6 +27,31 @@ from app.ui.scene_tab import SceneTab
 from app.ui.tts_tab import TTSTab
 from app.ui.video_tab import VideoTab
 from app.ui.watermark_tab import WatermarkTab
+
+
+class ToggleSwitch(QCheckBox):
+    """Công tắc gọn dùng cho các tùy chọn bật/tắt trên thanh công cụ."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(38, 22)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def hitButton(self, pos):
+        return self.rect().contains(pos)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        track_color = QColor("#4f7cff" if self.isChecked() else "#343a46")
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(track_color)
+        painter.drawRoundedRect(QRectF(1, 3, 36, 16), 8, 8)
+
+        knob_x = 27 if self.isChecked() else 11
+        painter.setBrush(QColor("#ffffff" if self.isChecked() else "#a7afbe"))
+        painter.drawEllipse(QPointF(knob_x, 11), 6, 6)
 
 
 class ProjectWorkspace(QWidget):
@@ -87,6 +113,15 @@ class ProjectWorkspace(QWidget):
         header_layout.addLayout(title_box)
         header_layout.addStretch()
 
+        auto_save_label = QLabel("Tự động lưu")
+        auto_save_label.setObjectName("meta_label")
+        header_layout.addWidget(auto_save_label)
+
+        self.action_auto_save = ToggleSwitch(self)
+        self.action_auto_save.setToolTip("Tự động lưu thay đổi trong dự án")
+        self.action_auto_save.toggled.connect(self._on_auto_save_toggled)
+        header_layout.addWidget(self.action_auto_save)
+
         self.btn_save = QPushButton("Lưu")
         self.btn_save.setObjectName("btn_subtle")
         self.btn_save.setToolTip("Lưu toàn bộ kịch bản, cấu hình và trạng thái của dự án")
@@ -98,21 +133,9 @@ class ProjectWorkspace(QWidget):
         self.btn_menu.setToolTip("Tùy chọn dự án")
         self.btn_menu.setFixedWidth(42)
         menu = QMenu(self.btn_menu)
-        self.action_auto_save = QAction("Tự động lưu", self)
-        self.action_auto_save.setCheckable(True)
-        self.action_auto_save.toggled.connect(self._on_auto_save_toggled)
-        open_folder_action = QAction("Mở thư mục", self)
-        open_folder_action.triggered.connect(self.open_current_project_folder)
         rename_action = QAction("Đổi tên", self)
         rename_action.triggered.connect(self.rename_current_project)
-        delete_action = QAction("Xóa dự án…", self)
-        delete_action.triggered.connect(self.delete_current_project)
-        menu.addAction(self.action_auto_save)
-        menu.addSeparator()
-        menu.addAction(open_folder_action)
         menu.addAction(rename_action)
-        menu.addSeparator()
-        menu.addAction(delete_action)
         self.btn_menu.setMenu(menu)
         header_layout.addWidget(self.btn_menu)
         workspace_layout.addWidget(header)

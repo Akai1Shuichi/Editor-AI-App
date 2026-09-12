@@ -2,17 +2,20 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, QSize, pyqtSignal
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QFrame, QMessageBox, QFileDialog, QComboBox,
-    QProgressBar
+    QPushButton, QFrame, QMessageBox, QFileDialog
 )
 
 from app import config
-from app.core.vibi_client import VibiClient, VibiAPIError
+from app.core.vibi_client import VibiClient
+
+ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
+
 
 class AccountCheckThread(QThread):
     """Worker kiểm tra số dư và thông tin tài khoản Vibi."""
@@ -45,6 +48,7 @@ class SettingsTab(QWidget):
         self.setObjectName("settings_tab")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.worker: Optional[AccountCheckThread] = None
+        self._pending_api_key: Optional[str] = None
         self.init_ui()
 
     def init_ui(self):
@@ -55,7 +59,7 @@ class SettingsTab(QWidget):
         page_title = QLabel("Cài đặt")
         page_title.setObjectName("page_heading")
         page_subtitle = QLabel(
-            "Thiết lập tài khoản và giá trị mặc định cho các dự án mới."
+            "Quản lý tài khoản Voice API và thư mục lưu dự án."
         )
         page_subtitle.setObjectName("page_subtitle")
         layout.addWidget(page_title)
@@ -85,8 +89,14 @@ class SettingsTab(QWidget):
         self.edit_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.edit_key.setPlaceholderText("Nhập Voice API Key...")
 
-        self.btn_toggle_key = QPushButton("Hiện")
-        self.btn_toggle_key.setFixedWidth(50)
+        self._eye_icon = QIcon(str(ICONS_DIR / "eye.svg"))
+        self._eye_off_icon = QIcon(str(ICONS_DIR / "eye-off.svg"))
+        self.btn_toggle_key = QPushButton()
+        self.btn_toggle_key.setFixedSize(34, 34)
+        self.btn_toggle_key.setIcon(self._eye_icon)
+        self.btn_toggle_key.setIconSize(QSize(18, 18))
+        self.btn_toggle_key.setToolTip("Hiện API Key")
+        self.btn_toggle_key.setAccessibleName("Hiện API Key")
         self.btn_toggle_key.setObjectName("btn_subtle")
         self.btn_toggle_key.clicked.connect(self.toggle_key_visibility)
 
@@ -94,14 +104,10 @@ class SettingsTab(QWidget):
         self.btn_save_key.setObjectName("btn_primary")
         self.btn_save_key.clicked.connect(self.save_api_key)
 
-        self.btn_check = QPushButton("Kiểm Tra Số Dư")
-        self.btn_check.clicked.connect(self.check_account)
-
         key_row.addWidget(lbl_k)
         key_row.addWidget(self.edit_key, stretch=2)
         key_row.addWidget(self.btn_toggle_key)
         key_row.addWidget(self.btn_save_key)
-        key_row.addWidget(self.btn_check)
         ap_layout.addLayout(key_row)
 
         # Thông tin tài khoản (Dòng thẻ thông tin gọn gàng)
@@ -127,7 +133,7 @@ class SettingsTab(QWidget):
         ap_layout.addWidget(self.info_box)
         layout.addWidget(acc_panel)
 
-        # 2. Panel Cấu hình mặc định
+        # 2. Panel thư mục dự án
         pref_panel = QFrame()
         pref_panel.setProperty("class", "panel")
         pref_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -135,44 +141,12 @@ class SettingsTab(QWidget):
         pp_layout.setContentsMargins(14, 12, 14, 12)
         pp_layout.setSpacing(10)
 
-        lbl_pref_header = QLabel("Cài Đặt Mặc Định")
+        lbl_pref_header = QLabel("Thư Mục Dự Án")
         lbl_pref_header.setProperty("class", "panel_title")
         pp_layout.addWidget(lbl_pref_header)
 
-        # Voice ID mặc định
-        r1 = QHBoxLayout()
-        lbl_def_v = QLabel("Voice ID mặc định:")
-        lbl_def_v.setProperty("class", "section_label")
-        lbl_def_v.setFixedWidth(160)
-        self.edit_def_voice = QLineEdit(config.DEFAULT_VIBI_VOICE_ID)
-        r1.addWidget(lbl_def_v)
-        r1.addWidget(self.edit_def_voice)
-        pp_layout.addLayout(r1)
-
-        # Model & Language mặc định
-        r2 = QHBoxLayout()
-        lbl_def_m = QLabel("Model mặc định:")
-        lbl_def_m.setProperty("class", "section_label")
-        lbl_def_m.setFixedWidth(160)
-        self.combo_def_model = QComboBox()
-        self.combo_def_model.addItems(["eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5"])
-        self.combo_def_model.setCurrentText(config.DEFAULT_VIBI_MODEL)
-
-        lbl_def_l = QLabel("Ngôn ngữ:")
-        lbl_def_l.setProperty("class", "section_label")
-        self.combo_def_lang = QComboBox()
-        self.combo_def_lang.addItems(["vi", "en", "ja", "ko", "zh"])
-        self.combo_def_lang.setCurrentText(config.DEFAULT_VIBI_LANGUAGE)
-
-        r2.addWidget(lbl_def_m)
-        r2.addWidget(self.combo_def_model, stretch=1)
-        r2.addSpacing(15)
-        r2.addWidget(lbl_def_l)
-        r2.addWidget(self.combo_def_lang, stretch=1)
-        pp_layout.addLayout(r2)
-
         # Đường dẫn lưu Projects
-        r3 = QHBoxLayout()
+        project_dir_row = QHBoxLayout()
         lbl_dir = QLabel("Đường dẫn lưu Projects:")
         lbl_dir.setProperty("class", "section_label")
         lbl_dir.setFixedWidth(160)
@@ -186,17 +160,11 @@ class SettingsTab(QWidget):
         self.btn_open_dir = QPushButton("Mở")
         self.btn_open_dir.clicked.connect(self.open_projects_dir)
 
-        r3.addWidget(lbl_dir)
-        r3.addWidget(self.lbl_dir_path, stretch=1)
-        r3.addWidget(self.btn_change_dir)
-        r3.addWidget(self.btn_open_dir)
-        pp_layout.addLayout(r3)
-
-        # Nút lưu cài đặt
-        self.btn_save_all = QPushButton("Lưu Cài Đặt")
-        self.btn_save_all.setObjectName("btn_primary")
-        self.btn_save_all.clicked.connect(self.save_preferences)
-        pp_layout.addWidget(self.btn_save_all)
+        project_dir_row.addWidget(lbl_dir)
+        project_dir_row.addWidget(self.lbl_dir_path, stretch=1)
+        project_dir_row.addWidget(self.btn_change_dir)
+        project_dir_row.addWidget(self.btn_open_dir)
+        pp_layout.addLayout(project_dir_row)
 
         layout.addWidget(pref_panel)
         layout.addStretch()
@@ -207,19 +175,23 @@ class SettingsTab(QWidget):
     def toggle_key_visibility(self):
         if self.edit_key.echoMode() == QLineEdit.EchoMode.Password:
             self.edit_key.setEchoMode(QLineEdit.EchoMode.Normal)
-            self.btn_toggle_key.setText("Ẩn")
+            self.btn_toggle_key.setIcon(self._eye_off_icon)
+            self.btn_toggle_key.setToolTip("Ẩn API Key")
+            self.btn_toggle_key.setAccessibleName("Ẩn API Key")
         else:
             self.edit_key.setEchoMode(QLineEdit.EchoMode.Password)
-            self.btn_toggle_key.setText("Hiện")
+            self.btn_toggle_key.setIcon(self._eye_icon)
+            self.btn_toggle_key.setToolTip("Hiện API Key")
+            self.btn_toggle_key.setAccessibleName("Hiện API Key")
 
     def save_api_key(self):
         key = self.edit_key.text().strip()
-        config.VIBI_API_KEY = key
-        config.save_env_variable("VIBI_API_KEY", key)
-        self.api_key_saved.emit(key)
-        QMessageBox.information(self, "Đã lưu", "Đã lưu Voice API Key thành công!")
-        if key:
-            self.check_account()
+        if not key:
+            QMessageBox.warning(self, "Chưa có Key", "Vui lòng nhập Voice API Key!")
+            return
+
+        self._pending_api_key = key
+        self._start_account_check(key)
 
     def check_account(self):
         key = self.edit_key.text().strip()
@@ -227,7 +199,11 @@ class SettingsTab(QWidget):
             QMessageBox.warning(self, "Chưa có Key", "Vui lòng nhập Voice API Key!")
             return
 
-        self.btn_check.setEnabled(False)
+        self._pending_api_key = None
+        self._start_account_check(key)
+
+    def _start_account_check(self, key: str):
+        self.btn_save_key.setEnabled(False)
         self.lbl_credits.setText("Đang kiểm tra...")
 
         self.worker = AccountCheckThread(api_key=key)
@@ -235,9 +211,21 @@ class SettingsTab(QWidget):
         self.worker.start()
 
     def on_account_checked(self, success: bool, info: dict, error_msg: str):
-        self.btn_check.setEnabled(True)
+        self.btn_save_key.setEnabled(True)
+        pending_api_key = self._pending_api_key
+        self._pending_api_key = None
 
         if success:
+            if pending_api_key is not None:
+                config.save_env_variable("VIBI_API_KEY", pending_api_key)
+                config.VIBI_API_KEY = pending_api_key
+                self.api_key_saved.emit(pending_api_key)
+                QMessageBox.information(
+                    self,
+                    "Đã lưu",
+                    "Đã kiểm tra và lưu Voice API Key thành công!",
+                )
+
             credits = info.get("credit_balance")
             if credits is None:
                 credits = info.get("credits", 0)
@@ -278,20 +266,3 @@ class SettingsTab(QWidget):
                 subprocess.run(["xdg-open", str(target)])
         except Exception as e:
             QMessageBox.warning(self, "Lỗi", f"Không thể mở thư mục: {e}")
-
-    def save_preferences(self):
-        def_voice = self.edit_def_voice.text().strip()
-        def_model = self.combo_def_model.currentText()
-        def_lang = self.combo_def_lang.currentText()
-
-        if def_voice:
-            config.save_env_variable("DEFAULT_VIBI_VOICE_ID", def_voice)
-            config.DEFAULT_VIBI_VOICE_ID = def_voice
-        if def_model:
-            config.save_env_variable("DEFAULT_VIBI_MODEL", def_model)
-            config.DEFAULT_VIBI_MODEL = def_model
-        if def_lang:
-            config.save_env_variable("DEFAULT_VIBI_LANGUAGE", def_lang)
-            config.DEFAULT_VIBI_LANGUAGE = def_lang
-
-        QMessageBox.information(self, "Đã lưu", "Đã lưu toàn bộ cài đặt mặc định!")

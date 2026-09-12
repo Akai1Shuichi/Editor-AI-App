@@ -17,7 +17,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AI Media Studio")
+        self.setWindowTitle("Editor AI App")
         self.resize(1440, 900)
         self.setMinimumSize(1100, 700)
 
@@ -52,20 +52,17 @@ class MainWindow(QMainWindow):
         b_layout.setContentsMargins(16, 16, 16, 12)
         b_layout.setSpacing(2)
 
-        logo = QLabel("AI MEDIA STUDIO")
+        logo = QLabel("EDITOR AI APP")
         logo.setObjectName("app_logo")
-        tagline = QLabel("Production workspace")
-        tagline.setObjectName("app_tagline")
 
         b_layout.addWidget(logo)
-        b_layout.addWidget(tagline)
         sb_layout.addWidget(brand_box)
 
         # Navigation Buttons (Điều hướng các module chính)
-        self.btn_nav_project = self.create_nav_btn("Dự án", 0)
-        self.btn_nav_watermark = self.create_nav_btn("Gỡ watermark Google Flow", 1)
-        self.btn_nav_tts = self.create_nav_btn("Tạo Voice TTS", 2)
-        self.btn_nav_settings = self.create_nav_btn("Cài đặt", 3)
+        self.btn_nav_project = self.create_nav_btn("📁  Dự án", 0)
+        self.btn_nav_watermark = self.create_nav_btn("🍌  Gỡ watermark Google Flow", 1)
+        self.btn_nav_tts = self.create_nav_btn("🎙  Tạo Voice TTS", 2)
+        self.btn_nav_settings = self.create_nav_btn("⚙  Cài đặt", 3)
 
         sb_layout.addWidget(self.btn_nav_project)
         sb_layout.addWidget(self.btn_nav_watermark)

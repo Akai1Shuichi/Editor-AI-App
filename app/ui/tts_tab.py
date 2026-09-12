@@ -461,7 +461,7 @@ class TTSTab(QWidget):
         row2.setSpacing(12)
 
         # Tham số 1 (Stability / Pitch)
-        self.lbl_st = QLabel("Stability:")
+        self.lbl_st = QLabel("Độ ổn định:")
         self.lbl_st.setProperty("class", "section_label")
         self.lbl_st_val = QLabel("0.50")
         self.lbl_st_val.setFixedWidth(30)
@@ -472,7 +472,7 @@ class TTSTab(QWidget):
         self.slider_st.valueChanged.connect(self._on_st_slider_changed)
 
         # Tham số 2 (Similarity / Volume)
-        self.lbl_sim = QLabel("Similarity:")
+        self.lbl_sim = QLabel("Độ tương đồng:")
         self.lbl_sim.setProperty("class", "section_label")
         self.lbl_sim_val = QLabel("0.75")
         self.lbl_sim_val.setFixedWidth(30)
@@ -483,7 +483,7 @@ class TTSTab(QWidget):
         self.slider_sim.valueChanged.connect(self._on_sim_slider_changed)
 
         # Tham số 3 (Speed)
-        self.lbl_sp = QLabel("Speed:")
+        self.lbl_sp = QLabel("Tốc độ:")
         self.lbl_sp.setProperty("class", "section_label")
         self.lbl_sp_val = QLabel("1.00x")
         self.lbl_sp_val.setFixedWidth(38)
@@ -707,7 +707,7 @@ class TTSTab(QWidget):
             self.slider_st.setValue(0)
             self.lbl_st_val.setText("0")
 
-            self.lbl_sim.setText("Similarity:")
+            self.lbl_sim.setText("Độ tương đồng:")
             self.slider_sim.setEnabled(False)
             self.slider_sim.setRange(0, 100)
             self.slider_sim.setValue(75)
@@ -721,12 +721,12 @@ class TTSTab(QWidget):
             # ElevenLabs
             self.combo_model.addItems(["eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5"])
             self.combo_lang.addItems(["vi", "en", "ja", "ko", "zh", "fr", "de", "es"])
-            self.lbl_st.setText("Stability:")
+            self.lbl_st.setText("Độ ổn định:")
             self.slider_st.setRange(0, 100)
             self.slider_st.setValue(int(config.DEFAULT_VIBI_STABILITY * 100))
             self.lbl_st_val.setText(f"{config.DEFAULT_VIBI_STABILITY:.2f}")
 
-            self.lbl_sim.setText("Similarity:")
+            self.lbl_sim.setText("Độ tương đồng:")
             self.slider_sim.setEnabled(True)
             self.slider_sim.setRange(0, 100)
             self.slider_sim.setValue(int(config.DEFAULT_VIBI_SIMILARITY * 100))

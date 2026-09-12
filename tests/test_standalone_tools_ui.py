@@ -8,12 +8,15 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QObject, QSettings, pyqtSignal
 from PyQt6.QtGui import QImage
-from PyQt6.QtWidgets import QApplication, QLabel, QTabWidget
+from PyQt6.QtWidgets import QApplication, QLabel, QLineEdit, QPushButton, QTabWidget
 
+from app import config
 from app.core.standalone_state import StandaloneStateStore
 from app.core.project_manager import Project
 from app.ui.project_workspace import ProjectWorkspace
+from app.ui.settings_tab import SettingsTab
 from app.ui.tts_tab import TTSTab
+from app.ui.voice_lookup_tab import VoiceLookupTab
 from app.ui.watermark_tab import WatermarkTab
 
 
@@ -32,6 +35,20 @@ class _SilentMediaPlayer(QObject):
 class _SilentAudioOutput:
     def setVolume(self, _volume):
         pass
+
+
+class _DeferredAccountCheckThread(QObject):
+    result_ready = pyqtSignal(bool, dict, str)
+    last_instance = None
+
+    def __init__(self, api_key=None):
+        super().__init__()
+        self.api_key = api_key
+        self.started = False
+        _DeferredAccountCheckThread.last_instance = self
+
+    def start(self):
+        self.started = True
 
 
 class _IdleTTSWorker(QObject):
@@ -143,6 +160,113 @@ class StandaloneToolsUiTests(unittest.TestCase):
             self.assertEqual(workspace.inner_tabs.tabText(0), "1  Ảnh (9) ✓")
             workspace.action_auto_save.setChecked(True)
             self.assertTrue(workspace.tts_tab.auto_save)
+
+    def test_settings_only_shows_account_and_project_location_preferences(self):
+        with patch("app.ui.settings_tab.config.VIBI_API_KEY", ""):
+            tab = SettingsTab()
+
+        label_texts = [label.text() for label in tab.findChildren(QLabel)]
+        button_texts = [button.text() for button in tab.findChildren(QPushButton)]
+
+        self.assertIn(
+            "Quản lý tài khoản Voice API và thư mục lưu dự án.", label_texts
+        )
+        self.assertIn("Thư Mục Dự Án", label_texts)
+        self.assertNotIn("Voice ID mặc định:", label_texts)
+        self.assertNotIn("Model mặc định:", label_texts)
+        self.assertNotIn("Ngôn ngữ:", label_texts)
+        self.assertNotIn("Lưu Cài Đặt", button_texts)
+        self.assertNotIn("Kiểm Tra Số Dư", button_texts)
+
+    def test_settings_api_key_visibility_uses_an_icon_only_toggle(self):
+        with patch("app.ui.settings_tab.config.VIBI_API_KEY", ""):
+            tab = SettingsTab()
+
+        button = tab.btn_toggle_key
+        hidden_icon_key = button.icon().cacheKey()
+        self.assertEqual(button.text(), "")
+        self.assertFalse(button.icon().isNull())
+        self.assertEqual(button.toolTip(), "Hiện API Key")
+        self.assertEqual(tab.edit_key.echoMode(), QLineEdit.EchoMode.Password)
+
+        button.click()
+
+        self.assertEqual(button.text(), "")
+        self.assertFalse(button.icon().isNull())
+        self.assertNotEqual(button.icon().cacheKey(), hidden_icon_key)
+        self.assertEqual(button.toolTip(), "Ẩn API Key")
+        self.assertEqual(tab.edit_key.echoMode(), QLineEdit.EchoMode.Normal)
+
+    def test_settings_rejects_invalid_api_key_without_saving_it(self):
+        saved_signals = []
+        with patch("app.ui.settings_tab.config.VIBI_API_KEY", ""), patch(
+            "app.ui.settings_tab.AccountCheckThread", _DeferredAccountCheckThread
+        ), patch(
+            "app.ui.settings_tab.config.save_env_variable"
+        ) as save_env, patch(
+            "app.ui.settings_tab.QMessageBox.information"
+        ), patch(
+            "app.ui.settings_tab.QMessageBox.critical"
+        ) as show_error:
+            tab = SettingsTab()
+            config.VIBI_API_KEY = "saved-key"
+            tab.api_key_saved.connect(saved_signals.append)
+            tab.edit_key.setText("invalid-key")
+
+            tab.save_api_key()
+
+            self.assertEqual(config.VIBI_API_KEY, "saved-key")
+            save_env.assert_not_called()
+            self.assertEqual(saved_signals, [])
+            self.assertFalse(tab.btn_save_key.isEnabled())
+            self.assertEqual(
+                _DeferredAccountCheckThread.last_instance.api_key, "invalid-key"
+            )
+
+            tab.worker.result_ready.emit(False, {}, "API Key không hợp lệ")
+
+            self.assertEqual(config.VIBI_API_KEY, "saved-key")
+            save_env.assert_not_called()
+            self.assertEqual(saved_signals, [])
+            self.assertTrue(tab.btn_save_key.isEnabled())
+            show_error.assert_called_once_with(
+                tab, "Lỗi kiểm tra", "API Key không hợp lệ"
+            )
+
+    def test_settings_saves_api_key_only_after_successful_validation(self):
+        saved_signals = []
+        account_info = {
+            "credit_balance": 125,
+            "name": "Tester",
+            "email": "tester@example.com",
+        }
+        with patch("app.ui.settings_tab.config.VIBI_API_KEY", ""), patch(
+            "app.ui.settings_tab.AccountCheckThread", _DeferredAccountCheckThread
+        ), patch(
+            "app.ui.settings_tab.config.save_env_variable"
+        ) as save_env, patch(
+            "app.ui.settings_tab.QMessageBox.information"
+        ) as show_success:
+            tab = SettingsTab()
+            config.VIBI_API_KEY = "saved-key"
+            tab.api_key_saved.connect(saved_signals.append)
+            tab.edit_key.setText("valid-key")
+
+            tab.save_api_key()
+
+            self.assertEqual(config.VIBI_API_KEY, "saved-key")
+            save_env.assert_not_called()
+            self.assertEqual(saved_signals, [])
+
+            tab.worker.result_ready.emit(True, account_info, "")
+
+            save_env.assert_called_once_with("VIBI_API_KEY", "valid-key")
+            self.assertEqual(config.VIBI_API_KEY, "valid-key")
+            self.assertEqual(saved_signals, ["valid-key"])
+            self.assertTrue(tab.btn_save_key.isEnabled())
+            show_success.assert_called_once_with(
+                tab, "Đã lưu", "Đã kiểm tra và lưu Voice API Key thành công!"
+            )
 
     def test_watermark_preview_switches_from_before_to_after_when_result_arrives(self):
         source = Path(self.temp_dir.name) / "flow.png"
@@ -268,6 +392,53 @@ class StandaloneToolsUiTests(unittest.TestCase):
             self.assertEqual(
                 self.store.load_tts()["script"], "Nội dung vừa nhập"
             )
+
+    def test_tts_uses_vietnamese_voice_parameter_labels(self):
+        with patch("app.ui.tts_tab.QMediaPlayer", _SilentMediaPlayer), patch(
+            "app.ui.tts_tab.QAudioOutput", _SilentAudioOutput
+        ), patch(
+            "app.ui.voice_lookup_tab.QMediaPlayer", _SilentMediaPlayer
+        ), patch(
+            "app.ui.voice_lookup_tab.QAudioOutput", _SilentAudioOutput
+        ):
+            tab = TTSTab()
+
+            self.assertEqual(tab.lbl_st.text(), "Độ ổn định:")
+            self.assertEqual(tab.lbl_sim.text(), "Độ tương đồng:")
+            self.assertEqual(tab.lbl_sp.text(), "Tốc độ:")
+
+            tab.combo_provider.setCurrentIndex(2)
+            self.assertEqual(tab.lbl_sim.text(), "Độ tương đồng:")
+
+            tab.combo_provider.setCurrentIndex(0)
+            self.assertEqual(tab.lbl_st.text(), "Độ ổn định:")
+            self.assertEqual(tab.lbl_sim.text(), "Độ tương đồng:")
+
+    def test_voice_lookup_rows_do_not_offer_a_default_action(self):
+        voice = {
+            "voice_id": "voice-123",
+            "name": "Giọng mẫu",
+            "provider": "elevenlabs",
+            "provider_display": "ElevenLabs",
+            "gender": "female",
+            "language": "vi",
+            "preview_url": "https://example.com/preview.mp3",
+            "description": "Giọng đọc thử",
+        }
+        with patch(
+            "app.ui.voice_lookup_tab.QMediaPlayer", _SilentMediaPlayer
+        ), patch(
+            "app.ui.voice_lookup_tab.QAudioOutput", _SilentAudioOutput
+        ):
+            tab = VoiceLookupTab()
+            tab.on_voices_loaded([voice], False, 1, "")
+
+        action_widget = tab.table.cellWidget(0, 5)
+        action_texts = [
+            button.text() for button in action_widget.findChildren(QPushButton)
+        ]
+        self.assertEqual(action_texts, ["▶ Nghe", "Dùng giọng", "Copy"])
+        self.assertLessEqual(tab.table.columnWidth(5), 220)
 
     def test_tts_sidebar_mode_can_change_the_base_output_folder(self):
         output_dir = Path(self.temp_dir.name) / "tts"

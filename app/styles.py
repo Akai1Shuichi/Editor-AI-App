@@ -94,8 +94,8 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 #sidebar {
     background-color: #16171d;
     border-right: 1px solid #23252c;
-    min-width: 200px;
-    max-width: 200px;
+    min-width: 260px;
+    max-width: 260px;
 }
 
 #sidebar_brand {
@@ -564,8 +564,8 @@ QSplitter::handle {
 #sidebar {
     background-color: #12151b;
     border-right: 1px solid #262c38;
-    min-width: 220px;
-    max-width: 220px;
+    min-width: 260px;
+    max-width: 260px;
 }
 
 #app_logo {
