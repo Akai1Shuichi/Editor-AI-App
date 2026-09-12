@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QComboBox, QProgressBar, QFrame, QMessageBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
-    QSplitter, QScrollArea, QApplication
+    QSplitter, QScrollArea, QApplication, QSizePolicy
 )
 
 from app import config
@@ -94,8 +94,11 @@ class VideoTab(QWidget):
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
         left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         left_scroll.setMinimumWidth(430)
-        left_scroll.setMaximumWidth(520)
+        left_scroll.setMaximumWidth(620)
 
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
@@ -127,9 +130,15 @@ class VideoTab(QWidget):
         box_img = QHBoxLayout()
         box_img.setSpacing(6)
         self.txt_image_dir = QLineEdit()
+        self.txt_image_dir.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
         self.txt_image_dir.setPlaceholderText("Đường dẫn thư mục ảnh (Mặc định: downloads)...")
         self.txt_image_dir.textChanged.connect(self.on_input_changed)
         btn_browse_img = QPushButton("Chọn...")
+        btn_browse_img.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
         btn_browse_img.clicked.connect(self.browse_image_dir)
         box_img.addWidget(self.txt_image_dir)
         box_img.addWidget(btn_browse_img)
@@ -142,9 +151,15 @@ class VideoTab(QWidget):
         box_aud = QHBoxLayout()
         box_aud.setSpacing(6)
         self.txt_audio_file = QLineEdit()
+        self.txt_audio_file.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
         self.txt_audio_file.setPlaceholderText("Đường dẫn file voice .mp3 (Mặc định: downloads)...")
         self.txt_audio_file.textChanged.connect(self.on_input_changed)
         btn_browse_aud = QPushButton("Chọn...")
+        btn_browse_aud.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
         btn_browse_aud.clicked.connect(self.browse_audio_file)
         box_aud.addWidget(self.txt_audio_file)
         box_aud.addWidget(btn_browse_aud)
@@ -157,9 +172,15 @@ class VideoTab(QWidget):
         box_srt = QHBoxLayout()
         box_srt.setSpacing(6)
         self.txt_srt_file = QLineEdit()
+        self.txt_srt_file.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
         self.txt_srt_file.setPlaceholderText("Đường dẫn file .srt (Mặc định: downloads)...")
         self.txt_srt_file.textChanged.connect(self.on_input_changed)
         btn_browse_srt = QPushButton("Chọn...")
+        btn_browse_srt.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
         btn_browse_srt.clicked.connect(self.browse_srt_file)
         box_srt.addWidget(self.txt_srt_file)
         box_srt.addWidget(btn_browse_srt)
@@ -209,8 +230,14 @@ class VideoTab(QWidget):
         box_out = QHBoxLayout()
         box_out.setSpacing(6)
         self.txt_output_path = QLineEdit()
+        self.txt_output_path.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
         self.txt_output_path.setPlaceholderText("Đường dẫn file .mp4 xuất ra...")
         btn_browse_out = QPushButton("Đổi...")
+        btn_browse_out.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
         btn_browse_out.clicked.connect(self.browse_output_file)
         box_out.addWidget(self.txt_output_path)
         box_out.addWidget(btn_browse_out)
@@ -237,14 +264,15 @@ class VideoTab(QWidget):
         self.btn_start.setObjectName("btn_primary")
         self.btn_start.setMinimumHeight(38)
         self.btn_start.clicked.connect(self.start_render)
-        btn_row.addWidget(self.btn_start)
+        btn_row.addWidget(self.btn_start, stretch=1)
 
         self.btn_cancel = QPushButton("⛔  Hủy")
         self.btn_cancel.setObjectName("btn_danger")
         self.btn_cancel.setMinimumHeight(38)
         self.btn_cancel.setEnabled(False)
+        self.btn_cancel.setVisible(False)
         self.btn_cancel.clicked.connect(self.cancel_render)
-        btn_row.addWidget(self.btn_cancel)
+        btn_row.addWidget(self.btn_cancel, stretch=1)
 
         act_layout.addLayout(btn_row)
 
@@ -351,6 +379,7 @@ class VideoTab(QWidget):
         splitter.addWidget(right_widget)
         splitter.setStretchFactor(0, 4)
         splitter.setStretchFactor(1, 6)
+        splitter.setSizes([520, 680])
 
         main_layout.addWidget(splitter)
 
@@ -762,8 +791,10 @@ class VideoTab(QWidget):
         fps = int(self.combo_fps.currentData() or 30)
 
         self.btn_start.setEnabled(False)
+        self.btn_start.setVisible(False)
         self.btn_preview.setEnabled(False)
         self.btn_cancel.setEnabled(True)
+        self.btn_cancel.setVisible(True)
         self.panel_result.setVisible(False)
         self.progress_bar.setValue(5)
         self.lbl_status.setText("Đang khởi tạo FFmpeg...")
@@ -792,8 +823,10 @@ class VideoTab(QWidget):
 
     def on_render_finished(self, success: bool, res: dict):
         self.btn_start.setEnabled(True)
+        self.btn_start.setVisible(True)
         self.btn_preview.setEnabled(True)
         self.btn_cancel.setEnabled(False)
+        self.btn_cancel.setVisible(False)
 
         if success:
             self.progress_bar.setValue(100)

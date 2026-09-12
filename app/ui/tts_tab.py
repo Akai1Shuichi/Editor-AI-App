@@ -562,10 +562,11 @@ class TTSTab(QWidget):
         self.btn_cancel = QPushButton("Hủy")
         self.btn_cancel.setObjectName("btn_danger")
         self.btn_cancel.setEnabled(False)
+        self.btn_cancel.setVisible(False)
         self.btn_cancel.clicked.connect(self.cancel_tts)
 
         action_bar.addWidget(self.btn_start, stretch=2)
-        action_bar.addWidget(self.btn_cancel)
+        action_bar.addWidget(self.btn_cancel, stretch=2)
         tts_layout.addLayout(action_bar)
 
         self.progress_bar = QProgressBar()
@@ -827,7 +828,9 @@ class TTSTab(QWidget):
             out_dir = self.project.voice_dir if self.project else None
 
         self.btn_start.setEnabled(False)
+        self.btn_start.setVisible(False)
         self.btn_cancel.setEnabled(True)
+        self.btn_cancel.setVisible(True)
         self.progress_bar.setValue(10)
         self.lbl_status.setText(f"Đang kết nối Voice API ({provider.upper()})...")
 
@@ -855,7 +858,9 @@ class TTSTab(QWidget):
 
     def on_tts_finished(self, success: bool, audio_path: str, srt_path: str, msg: str):
         self.btn_start.setEnabled(True)
+        self.btn_start.setVisible(True)
         self.btn_cancel.setEnabled(False)
+        self.btn_cancel.setVisible(False)
         if self.standalone_store:
             self.output_controls.setEnabled(True)
 

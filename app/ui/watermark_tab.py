@@ -412,10 +412,11 @@ class WatermarkTab(QWidget):
         self.btn_cancel = QPushButton("Hủy")
         self.btn_cancel.setObjectName("btn_danger")
         self.btn_cancel.setEnabled(False)
+        self.btn_cancel.setVisible(False)
         self.btn_cancel.clicked.connect(self.cancel_processing)
 
         action_box.addWidget(self.btn_start, stretch=2)
-        action_box.addWidget(self.btn_cancel)
+        action_box.addWidget(self.btn_cancel, stretch=2)
         left_layout.addLayout(action_box)
 
         # Progress bar
@@ -634,7 +635,9 @@ class WatermarkTab(QWidget):
             )
 
         self.btn_start.setEnabled(False)
+        self.btn_start.setVisible(False)
         self.btn_cancel.setEnabled(True)
+        self.btn_cancel.setVisible(True)
         self.set_file_list_controls_enabled(False)
         self.progress_bar.setValue(0)
         self.status_lbl.setText("Đang chuẩn bị...")
@@ -667,7 +670,9 @@ class WatermarkTab(QWidget):
 
     def on_finished_all(self, total: int, success_count: int):
         self.btn_start.setEnabled(True)
+        self.btn_start.setVisible(True)
         self.btn_cancel.setEnabled(False)
+        self.btn_cancel.setVisible(False)
         self.set_file_list_controls_enabled(True)
         if self.standalone_store:
             self.edit_output_name.setEnabled(True)

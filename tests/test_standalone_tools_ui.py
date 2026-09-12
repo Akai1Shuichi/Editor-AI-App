@@ -6,9 +6,16 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QObject, QSettings, pyqtSignal
+from PyQt6.QtCore import QObject, QPoint, QSettings, pyqtSignal
 from PyQt6.QtGui import QImage
-from PyQt6.QtWidgets import QApplication, QLabel, QLineEdit, QPushButton, QTabWidget
+from PyQt6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QTabWidget,
+)
 
 from app import config
 from app.core.standalone_state import StandaloneStateStore
@@ -16,6 +23,7 @@ from app.core.project_manager import Project
 from app.ui.project_workspace import ProjectWorkspace
 from app.ui.settings_tab import SettingsTab
 from app.ui.tts_tab import TTSTab
+from app.ui.video_tab import VideoTab
 from app.ui.voice_lookup_tab import VoiceLookupTab
 from app.ui.watermark_tab import WatermarkTab
 
@@ -83,6 +91,25 @@ class _IdleWatermarkWorker(QObject):
 
     def start(self):
         pass
+
+
+class _IdleVideoRenderWorker(QObject):
+    progress_updated = pyqtSignal(int, str)
+    render_finished = pyqtSignal(bool, dict)
+
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.kwargs = kwargs
+        self.started = False
+
+    def start(self):
+        self.started = True
+
+    def isRunning(self):
+        return self.started
+
+    def cancel(self):
+        self.started = False
 
 
 class StandaloneToolsUiTests(unittest.TestCase):
@@ -484,9 +511,13 @@ class StandaloneToolsUiTests(unittest.TestCase):
             tab.txt_input.setPlainText("Nội dung")
             tab.edit_voice_id.setText("voice-id")
             tab.edit_output_name.setText("voice_retry")
+            self.assertFalse(tab.btn_start.isHidden())
+            self.assertTrue(tab.btn_cancel.isHidden())
 
             tab.start_tts()
 
+            self.assertTrue(tab.btn_start.isHidden())
+            self.assertFalse(tab.btn_cancel.isHidden())
             run_dir = output_dir / "voice_retry"
             self.assertTrue(run_dir.is_dir())
             self.assertEqual(_IdleTTSWorker.last_instance.kwargs["output_dir"], run_dir)
@@ -501,6 +532,8 @@ class StandaloneToolsUiTests(unittest.TestCase):
             self.assertFalse(run_dir.exists())
             self.assertEqual(tab.edit_output_name.text(), "voice_retry")
             self.assertTrue(tab.output_controls.isEnabled())
+            self.assertFalse(tab.btn_start.isHidden())
+            self.assertTrue(tab.btn_cancel.isHidden())
 
     def test_watermark_failed_run_releases_an_empty_folder_for_retry(self):
         source = Path(self.temp_dir.name) / "flow.png"
@@ -514,8 +547,12 @@ class StandaloneToolsUiTests(unittest.TestCase):
             tab.on_files_selected([source])
             tab.table.selectRow(0)
             tab.edit_output_name.setText("clean_retry")
+            self.assertFalse(tab.btn_start.isHidden())
+            self.assertTrue(tab.btn_cancel.isHidden())
 
             tab.start_processing()
+            self.assertTrue(tab.btn_start.isHidden())
+            self.assertFalse(tab.btn_cancel.isHidden())
             run_dir = output_dir / "clean_retry"
             self.assertTrue(run_dir.is_dir())
             self.assertFalse(tab.edit_output_name.isEnabled())
@@ -531,6 +568,67 @@ class StandaloneToolsUiTests(unittest.TestCase):
             self.assertTrue(tab.table.isEnabled())
             self.assertTrue(tab.btn_delete_selected.isEnabled())
             self.assertTrue(tab.action_clear.isEnabled())
+            self.assertFalse(tab.btn_start.isHidden())
+            self.assertTrue(tab.btn_cancel.isHidden())
+
+    def test_video_cancel_replaces_start_only_while_rendering(self):
+        image_path = Path(self.temp_dir.name) / "scene.png"
+        image_path.write_bytes(b"image")
+
+        with patch.object(VideoTab, "auto_detect_defaults"), patch(
+            "app.ui.video_tab.VideoRenderWorker", _IdleVideoRenderWorker
+        ), patch("app.ui.video_tab.QMessageBox.critical"):
+            tab = VideoTab()
+            tab.current_timeline = [{"image": image_path}]
+            tab.txt_audio_file.setText(str(Path(self.temp_dir.name) / "voice.mp3"))
+            tab.txt_output_path.setText(str(Path(self.temp_dir.name) / "video.mp4"))
+
+            self.assertFalse(tab.btn_start.isHidden())
+            self.assertTrue(tab.btn_cancel.isHidden())
+
+            tab.start_render()
+
+            self.assertTrue(tab.btn_start.isHidden())
+            self.assertFalse(tab.btn_cancel.isHidden())
+
+            tab.on_render_finished(False, {"error": "Đã hủy"})
+
+            self.assertFalse(tab.btn_start.isHidden())
+            self.assertTrue(tab.btn_cancel.isHidden())
+
+    def test_video_configuration_keeps_path_fields_and_browse_buttons_visible(self):
+        with patch.object(VideoTab, "auto_detect_defaults"):
+            tab = VideoTab()
+
+        tab.resize(1200, 720)
+        tab.show()
+        self.app.processEvents()
+
+        left_scroll = tab.findChild(QScrollArea)
+        path_fields = [
+            tab.txt_image_dir,
+            tab.txt_audio_file,
+            tab.txt_srt_file,
+            tab.txt_output_path,
+        ]
+        browse_buttons = [
+            button
+            for button in tab.findChildren(QPushButton)
+            if button.text() in {"Chọn...", "Đổi..."}
+        ]
+
+        self.assertEqual(left_scroll.horizontalScrollBar().maximum(), 0)
+        self.assertTrue(all(field.width() >= 330 for field in path_fields))
+        self.assertEqual(len(browse_buttons), 4)
+        self.assertTrue(
+            all(
+                button.mapTo(left_scroll.viewport(), QPoint(0, 0)).x()
+                + button.width()
+                <= left_scroll.viewport().width()
+                for button in browse_buttons
+            )
+        )
+        tab.close()
 
 
 if __name__ == "__main__":
