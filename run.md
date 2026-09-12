@@ -26,6 +26,10 @@ File thực thi được tạo trong `dist/`:
 Workflow GitHub Actions tại `.github/workflows/build.yml` sẽ build **Editor Video App** trên Windows, macOS và Linux khi nhận tag có dạng `v*`.
 
 ```bash
+git add .
+git commit -m "Mô tả thay đổi"
+git push origin master
+
 # Tạo tag phát hành (ví dụ v1.0)
 git tag -a v1.0 -m "Release Editor Video App v1.0"
 
