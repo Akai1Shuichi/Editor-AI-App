@@ -510,6 +510,9 @@ class VoiceLookupTab(QWidget):
             self.lbl_page_info.setText(f"Trang {self.current_page}")
 
     def load_voices(self):
+        if self.worker and self.worker.isRunning():
+            return
+
         source = self.combo_source.currentData() or "community_voices"
         search = self.edit_search.text().strip()
         gender = self.combo_gender.currentData() or "all"

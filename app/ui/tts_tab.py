@@ -681,8 +681,6 @@ class TTSTab(QWidget):
     def open_voice_lookup(self):
         """Chuyển sang tab tra cứu giọng nói và tự động tải nếu bảng còn trống."""
         self.tab_widget.setCurrentIndex(1)
-        if self.voice_lookup_tab.table.rowCount() == 0 and config.VIBI_API_KEY:
-            self.voice_lookup_tab.load_voices()
 
     def on_subtab_changed(self, index: int):
         """Khi người dùng bấm sang subtab Tra cứu Voice, tự động nạp danh sách nếu chưa có."""
