@@ -182,25 +182,34 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 }
 
 /* ================= API KEY PURCHASE OFFER ================= */
-#bot_offer {
+#pricing_offer {
     background-color: #172033;
     border: 1px solid #29466f;
     border-radius: 7px;
 }
 
-#bot_offer_name {
+#offer_label {
     color: #f8fafc;
     font-size: 12px;
     font-weight: 600;
 }
 
-#bot_offer_original_price {
+#offer_sale {
+    color: #fbbf24;
+    background-color: #3a2b0d;
+    border-radius: 5px;
+    padding: 3px 7px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+#offer_old_price {
     color: #94a3b8;
     font-size: 12px;
     text-decoration: line-through;
 }
 
-#bot_offer_sale_price {
+#offer_price {
     color: #34d399;
     font-size: 16px;
     font-weight: 700;

@@ -28,7 +28,7 @@ def format_vnd_price(value: Any) -> str:
 
 class PricingFetchThread(QThread):
     """Thread tải bảng giá động từ API."""
-    result_ready = pyqtSignal(bool, dict, str)
+    result_ready = pyqtSignal(bool, object, str)
 
     def __init__(self, url: str = ELEVENLABS_PRICING_API_URL):
         super().__init__()
@@ -66,25 +66,11 @@ class PricingTab(QWidget):
         self.lbl_pricing_title.setObjectName("page_heading")
         layout.addWidget(self.lbl_pricing_title)
 
-        offer_panel = QFrame()
-        offer_panel.setObjectName("bot_offer")
-        offer_layout = QHBoxLayout(offer_panel)
-        offer_layout.setContentsMargins(16, 14, 16, 14)
-        offer_layout.setSpacing(12)
-
-        self.lbl_bot_offer_name = QLabel("ElevenLabs Redeem 131K Credit · Sale 30%")
-        self.lbl_bot_offer_name.setObjectName("bot_offer_name")
-
-        self.lbl_bot_offer_original_price = QLabel("92.000đ")
-        self.lbl_bot_offer_original_price.setObjectName("bot_offer_original_price")
-        self.lbl_bot_offer_sale_price = QLabel("65.000đ")
-        self.lbl_bot_offer_sale_price.setObjectName("bot_offer_sale_price")
-
-        offer_layout.addWidget(self.lbl_bot_offer_name)
-        offer_layout.addStretch()
-        offer_layout.addWidget(self.lbl_bot_offer_original_price)
-        offer_layout.addWidget(self.lbl_bot_offer_sale_price)
-        layout.addWidget(offer_panel)
+        self.offers_container = QWidget()
+        self.offers_layout = QVBoxLayout(self.offers_container)
+        self.offers_layout.setContentsMargins(0, 0, 0, 0)
+        self.offers_layout.setSpacing(8)
+        layout.addWidget(self.offers_container)
 
         purchase_row = QHBoxLayout()
         purchase_row.setContentsMargins(2, 0, 0, 0)
@@ -120,29 +106,70 @@ class PricingTab(QWidget):
         self.worker.result_ready.connect(self._on_pricing_loaded)
         self.worker.start()
 
-    def _on_pricing_loaded(self, success: bool, data: dict, error_msg: str):
+    def _on_pricing_loaded(self, success: bool, data: Any, error_msg: str):
         if success and data:
             self.update_pricing_data(data)
 
-    def update_pricing_data(self, data: dict):
-        """Cập nhật giao diện khi có dữ liệu giá từ API."""
-        sale = str(data.get("sale", "")).strip()
-        price = data.get("price")
-        old_price = data.get("old_price")
+    def update_pricing_data(self, data: Any):
+        """Render từng gói giá từ mảng API, đồng thời hỗ trợ payload JSON cũ."""
+        offers = self._extract_offers(data)
+        self._clear_offers()
 
-        if sale:
-            self.lbl_bot_offer_name.setText(f"ElevenLabs Redeem 131K Credit · Sale {sale}")
-        else:
-            self.lbl_bot_offer_name.setText("ElevenLabs Redeem 131K Credit")
+        for offer in offers:
+            self.offers_layout.addWidget(self._create_offer_widget(offer))
 
-        if old_price is not None:
-            self.lbl_bot_offer_original_price.setText(format_vnd_price(old_price))
-            self.lbl_bot_offer_original_price.setVisible(True)
-        else:
-            self.lbl_bot_offer_original_price.setVisible(False)
+    @staticmethod
+    def _extract_offers(data: Any) -> list[dict]:
+        if isinstance(data, list):
+            return [offer for offer in data if isinstance(offer, dict)]
+        if isinstance(data, dict):
+            items = data.get("items")
+            if isinstance(items, list):
+                return [offer for offer in items if isinstance(offer, dict)]
+            return [data]
+        return []
 
-        if price is not None:
-            self.lbl_bot_offer_sale_price.setText(format_vnd_price(price))
-            self.lbl_bot_offer_sale_price.setVisible(True)
-        else:
-            self.lbl_bot_offer_sale_price.setVisible(False)
+    def _clear_offers(self):
+        while self.offers_layout.count():
+            item = self.offers_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+    def _create_offer_widget(self, offer: dict) -> QFrame:
+        panel = QFrame()
+        panel.setObjectName("pricing_offer")
+        layout = QHBoxLayout(panel)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        label = QLabel(str(offer.get("label", "")).strip())
+        label.setObjectName("offer_label")
+        layout.addWidget(label)
+
+        sale = self._sale_percent(offer.get("sale", 0))
+        if sale > 0:
+            sale_label = QLabel(f"Sale {sale:g}%")
+            sale_label.setObjectName("offer_sale")
+            layout.addWidget(sale_label)
+
+        layout.addStretch()
+
+        if sale > 0 and offer.get("old_price") is not None:
+            old_price = QLabel(format_vnd_price(offer["old_price"]))
+            old_price.setObjectName("offer_old_price")
+            layout.addWidget(old_price)
+
+        if offer.get("price") is not None:
+            price = QLabel(format_vnd_price(offer["price"]))
+            price.setObjectName("offer_price")
+            layout.addWidget(price)
+
+        return panel
+
+    @staticmethod
+    def _sale_percent(value: Any) -> float:
+        try:
+            return max(0, float(str(value).replace("%", "").strip()))
+        except (TypeError, ValueError):
+            return 0
