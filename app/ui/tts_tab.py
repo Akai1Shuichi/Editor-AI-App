@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
     QLineEdit, QPushButton, QComboBox, QSlider, QCheckBox,
     QProgressBar, QFrame, QMessageBox, QFileDialog, QScrollArea, QTabWidget,
-    QSizePolicy
+    QSizePolicy, QLayout
 )
 
 from app import config
@@ -481,7 +481,10 @@ class TTSTab(QWidget):
         cfg_panel = QFrame()
         cfg_panel.setProperty("class", "panel")
         cfg_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        cfg_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        cfg_panel.setMinimumHeight(150)
         cp_layout = QVBoxLayout(cfg_panel)
+        cp_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         cp_layout.setContentsMargins(12, 10, 12, 10)
         cp_layout.setSpacing(8)
 
@@ -673,7 +676,9 @@ class TTSTab(QWidget):
         player_panel = QFrame()
         player_panel.setProperty("class", "panel")
         player_panel.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        player_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         pp_layout = QVBoxLayout(player_panel)
+        pp_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         pp_layout.setContentsMargins(12, 10, 12, 10)
         pp_layout.setSpacing(8)
 
@@ -723,13 +728,22 @@ class TTSTab(QWidget):
         pp_layout.addLayout(scrubber)
 
         tts_layout.addWidget(player_panel)
+        tts_layout.addStretch()
 
         # ================= SUBTAB 2: TRA CỨU VOICE =================
         self.voice_lookup_tab = VoiceLookupTab()
         self.voice_lookup_tab.voice_picked_for_tts.connect(self.on_voice_picked_from_lookup)
 
+        # Scroll area bao bọc subtab Tạo Giọng Nói để giao diện luôn chuẩn đẹp, không bị vỡ layout
+        self.tts_scroll_area = QScrollArea()
+        self.tts_scroll_area.setObjectName("tts_scroll_area")
+        self.tts_scroll_area.setWidgetResizable(True)
+        self.tts_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.tts_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.tts_scroll_area.setWidget(self.tab_tts_gen)
+
         # Thêm 2 subtab vào QTabWidget
-        self.tab_widget.addTab(self.tab_tts_gen, "🎙️  Tạo Giọng Nói")
+        self.tab_widget.addTab(self.tts_scroll_area, "🎙️  Tạo Giọng Nói")
         self.tab_widget.addTab(self.voice_lookup_tab, "🔍  Tra Cứu Voice")
         self.tab_widget.currentChanged.connect(self.on_subtab_changed)
 
