@@ -45,12 +45,12 @@ Khi cần build lại cùng một phiên bản (ví dụ `v1.2`) sau khi đã s�
 
 ```bash
 # Xoá tag cũ ở local và remote
-git tag -d v1.2
-git push origin --delete v1.2
+git tag -d v1.0
+git push origin --delete v1.0
 
 # Tạo lại tag tại commit hiện tại và push để kích hoạt workflow lần nữa
-git tag -a v1.2 -m "Release Editor Video App v1.2"
-git push origin v1.2
+git tag -a v1.0 -m "Release Editor Video App v1.0"
+git push origin v1.0
 ```
 
 > Lưu ý: chỉ dùng các lệnh trên với tag phát hành cần thay thế. Xoá tag remote sẽ kích hoạt build mới sau khi tag được tạo lại.
