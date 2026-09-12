@@ -354,7 +354,7 @@ class ProjectManager:
     @classmethod
     def set_active_project(cls, slug: str) -> Optional[Project]:
         """Kích hoạt một dự án và lưu vào config / .env."""
-        config.save_env_variable("ACTIVE_PROJECT", slug)
+        config.save_setting("ACTIVE_PROJECT", slug)
         return cls.get_project(slug)
 
     @classmethod

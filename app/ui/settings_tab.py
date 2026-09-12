@@ -252,7 +252,7 @@ class SettingsTab(QWidget):
 
         if success:
             if pending_api_key == checked_key:
-                config.save_env_variable("VIBI_API_KEY", pending_api_key)
+                config.save_setting("VIBI_API_KEY", pending_api_key)
                 config.VIBI_API_KEY = pending_api_key
                 self.api_key_saved.emit(pending_api_key)
                 QMessageBox.information(
@@ -289,7 +289,7 @@ class SettingsTab(QWidget):
             p = Path(folder)
             p.mkdir(parents=True, exist_ok=True)
             config.PROJECTS_DIR = p
-            config.save_env_variable("PROJECTS_DIR", str(p))
+            config.save_setting("PROJECTS_DIR", str(p))
             self.lbl_dir_path.setText(str(p))
 
     def open_projects_dir(self):

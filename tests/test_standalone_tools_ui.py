@@ -229,8 +229,8 @@ class StandaloneToolsUiTests(unittest.TestCase):
         with patch("app.ui.settings_tab.config.VIBI_API_KEY", ""), patch(
             "app.ui.settings_tab.AccountCheckThread", _DeferredAccountCheckThread
         ), patch(
-            "app.ui.settings_tab.config.save_env_variable"
-        ) as save_env, patch(
+            "app.ui.settings_tab.config.save_setting"
+        ) as save_setting, patch(
             "app.ui.settings_tab.QMessageBox.information"
         ), patch(
             "app.ui.settings_tab.QMessageBox.critical"
@@ -243,7 +243,7 @@ class StandaloneToolsUiTests(unittest.TestCase):
             tab.save_api_key()
 
             self.assertEqual(config.VIBI_API_KEY, "saved-key")
-            save_env.assert_not_called()
+            save_setting.assert_not_called()
             self.assertEqual(saved_signals, [])
             self.assertFalse(tab.btn_save_key.isEnabled())
             self.assertEqual(
@@ -255,7 +255,7 @@ class StandaloneToolsUiTests(unittest.TestCase):
             )
 
             self.assertEqual(config.VIBI_API_KEY, "saved-key")
-            save_env.assert_not_called()
+            save_setting.assert_not_called()
             self.assertEqual(saved_signals, [])
             self.assertTrue(tab.btn_save_key.isEnabled())
             show_error.assert_called_once_with(
@@ -272,8 +272,8 @@ class StandaloneToolsUiTests(unittest.TestCase):
         with patch("app.ui.settings_tab.config.VIBI_API_KEY", ""), patch(
             "app.ui.settings_tab.AccountCheckThread", _DeferredAccountCheckThread
         ), patch(
-            "app.ui.settings_tab.config.save_env_variable"
-        ) as save_env, patch(
+            "app.ui.settings_tab.config.save_setting"
+        ) as save_setting, patch(
             "app.ui.settings_tab.QMessageBox.information"
         ) as show_success:
             tab = SettingsTab()
@@ -284,12 +284,12 @@ class StandaloneToolsUiTests(unittest.TestCase):
             tab.save_api_key()
 
             self.assertEqual(config.VIBI_API_KEY, "saved-key")
-            save_env.assert_not_called()
+            save_setting.assert_not_called()
             self.assertEqual(saved_signals, [])
 
             tab.worker.result_ready.emit("valid-key", True, account_info, "")
 
-            save_env.assert_called_once_with("VIBI_API_KEY", "valid-key")
+            save_setting.assert_called_once_with("VIBI_API_KEY", "valid-key")
             self.assertEqual(config.VIBI_API_KEY, "valid-key")
             self.assertEqual(saved_signals, ["valid-key"])
             self.assertTrue(tab.btn_save_key.isEnabled())
