@@ -1,6 +1,3 @@
-import os
-import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -26,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.core.project_manager import Project, ProjectManager, slugify
+from app.core.platform_utils import open_path
 
 
 class NewProjectDialog(QDialog):
@@ -484,11 +482,6 @@ class ProjectTab(QWidget):
     @staticmethod
     def open_folder(folder_path: Path):
         try:
-            if sys.platform.startswith("win"):
-                os.startfile(str(folder_path))
-            elif sys.platform == "darwin":
-                subprocess.run(["open", str(folder_path)], check=False)
-            else:
-                subprocess.run(["xdg-open", str(folder_path)], check=False)
+            open_path(folder_path)
         except OSError as exc:
             QMessageBox.warning(None, "Không thể mở thư mục", str(exc))

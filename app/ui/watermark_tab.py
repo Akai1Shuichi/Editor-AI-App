@@ -1,6 +1,3 @@
-import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import List, Optional
 
@@ -14,6 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.core.watermark_remover import GeminiWatermarkRemover
+from app.core.platform_utils import open_path
 from app.core.standalone_state import (
     StandaloneStateStore,
     build_output_folder_name,
@@ -714,11 +712,6 @@ class WatermarkTab(QWidget):
             target = config.DOWNLOADS_DIR
 
         try:
-            if sys.platform.startswith("win"):
-                os.startfile(str(target))
-            elif sys.platform == "darwin":
-                subprocess.run(["open", str(target)])
-            else:
-                subprocess.run(["xdg-open", str(target)])
+            open_path(target)
         except Exception as e:
             QMessageBox.warning(self, "Lỗi", f"Không thể mở thư mục: {e}")

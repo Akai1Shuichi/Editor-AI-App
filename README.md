@@ -16,15 +16,47 @@
 
 ## 🚀 Hướng dẫn Khởi chạy Ứng dụng
 
-### Windows (Khuyên dùng)
+Yêu cầu: Python 3.10 trở lên. FFmpeg được tự động tải qua `imageio-ffmpeg`; nếu máy đã có FFmpeg trong `PATH`, ứng dụng sẽ dùng bản đó trước.
+
+### Windows
+
 ```cmd
-cd Editor-AI-App
-.venv\Scripts\python.exe start_app.py
+py -3 -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python start_app.py
 ```
-Hoặc chạy lệnh CLI tạo video:
-```cmd
-.venv\Scripts\python.exe create_video.py --images projects/review-cong-nghe-01/images/clean --audio projects/review-cong-nghe-01/voice/narration.mp3 --srt projects/review-cong-nghe-01/voice/narration.srt --json projects/review-cong-nghe-01/scenes.json --output projects/review-cong-nghe-01/output/final_video.mp4
+
+### macOS
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python start_app.py
 ```
+
+Nếu Python chưa có trên máy, cài từ [python.org](https://www.python.org/downloads/macos/) hoặc Homebrew (`brew install python`). macOS có thể hỏi xác nhận khi lần đầu mở ứng dụng hoặc thư mục.
+
+### Linux
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python start_app.py
+```
+
+Trên Debian/Ubuntu, nếu chưa có `venv`, chạy `sudo apt install python3-venv`. Chức năng mở file/thư mục dùng `xdg-open`, thường đã có trong môi trường desktop Linux.
+
+### Ghi chú tương thích
+
+- Không chạy `create_video.py`: file này không còn tồn tại. Tính năng ghép video nằm trong giao diện ứng dụng.
+- Tránh các bản Python quá cũ; PyQt6 và Pillow trong `requirements.txt` cần Python hiện đại.
+- `imageio-ffmpeg` tải binary riêng theo Windows, macOS hoặc Linux. Khi mạng công ty chặn lần tải đầu tiên, hãy cài FFmpeg hệ thống và bảo đảm lệnh `ffmpeg` có trong `PATH`.
 
 ---
 
@@ -39,4 +71,3 @@ projects/<ten_du_an>/
 ├── voice/                # File âm thanh (.mp3, .wav) và phụ đề (.srt)
 └── output/               # Video MP4 xuất bản thành phẩm
 ```
-

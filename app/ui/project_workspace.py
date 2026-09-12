@@ -1,6 +1,3 @@
-import os
-import subprocess
-import sys
 from datetime import datetime
 from typing import Optional
 
@@ -22,6 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.core.project_manager import Project, ProjectManager
+from app.core.platform_utils import open_path
 from app.ui.project_tab import ProjectTab
 from app.ui.scene_tab import SceneTab
 from app.ui.tts_tab import TTSTab
@@ -360,16 +358,7 @@ class ProjectWorkspace(QWidget):
         if not self.current_project or not self.current_project.path.exists():
             return
         try:
-            if sys.platform.startswith("win"):
-                os.startfile(str(self.current_project.path))
-            elif sys.platform == "darwin":
-                subprocess.run(
-                    ["open", str(self.current_project.path)], check=False
-                )
-            else:
-                subprocess.run(
-                    ["xdg-open", str(self.current_project.path)], check=False
-                )
+            open_path(self.current_project.path)
         except OSError as exc:
             QMessageBox.warning(self, "Không thể mở thư mục", str(exc))
 

@@ -1,6 +1,3 @@
-import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -15,6 +12,7 @@ from PyQt6.QtWidgets import (
 
 from app import config
 from app.core.vibi_client import VibiClient, VibiAPIError
+from app.core.platform_utils import open_path
 from app.core.tts_credits import format_credit_summary
 from app.core.standalone_state import (
     StandaloneStateStore,
@@ -1123,12 +1121,7 @@ class TTSTab(QWidget):
         else:
             target = config.DOWNLOADS_DIR
         try:
-            if sys.platform.startswith("win"):
-                os.startfile(str(target))
-            elif sys.platform == "darwin":
-                subprocess.run(["open", str(target)])
-            else:
-                subprocess.run(["xdg-open", str(target)])
+            open_path(target)
         except Exception as e:
             QMessageBox.warning(self, "Lỗi", f"Không thể mở thư mục: {e}")
 

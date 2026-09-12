@@ -26,6 +26,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
 from rich.table import Table
+from app.core.platform_utils import open_path
 
 if sys.platform == "win32":
     try:
@@ -37,6 +38,12 @@ if sys.platform == "win32":
         pass
 
 console = Console()
+
+
+def escape_ffconcat_path(path: str) -> str:
+    """Escape a path for a single-quoted FFmpeg concat-demuxer entry."""
+    return path.replace("'", r"'\''")
+
 
 def get_ffmpeg_path() -> str:
     """Tìm đường dẫn thực thi ffmpeg: hệ thống hoặc thư viện imageio-ffmpeg."""
@@ -363,13 +370,13 @@ def render_video(
         img = item.get("image")
         if not img:
             img = valid_items[0]["image"]
-        img_p = Path(img).resolve().as_posix()
+        img_p = escape_ffconcat_path(Path(img).resolve().as_posix())
         dur = item["duration"]
         concat_lines.append(f"file '{img_p}'")
         concat_lines.append(f"duration {dur}")
 
     last_img = timeline[-1].get("image") or valid_items[-1]["image"]
-    last_img_p = Path(last_img).resolve().as_posix()
+    last_img_p = escape_ffconcat_path(Path(last_img).resolve().as_posix())
     concat_lines.append(f"file '{last_img_p}'")
 
     temp_concat_file.write_text("\n".join(concat_lines) + "\n", encoding="utf-8")
@@ -663,12 +670,7 @@ def interactive_cli():
 
         if Confirm.ask("Bạn có muốn mở file video vừa tạo để xem ngay không?", default=True):
             try:
-                if sys.platform.startswith("win"):
-                    os.startfile(str(output_path))
-                elif sys.platform == "darwin":
-                    subprocess.run(["open", str(output_path)])
-                else:
-                    subprocess.run(["xdg-open", str(output_path)])
+                open_path(output_path)
             except Exception as e:
                 console.print(f"[red]Không thể mở video: {e}[/red]")
     else:

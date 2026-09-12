@@ -1,6 +1,3 @@
-import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +10,7 @@ from PyQt6.QtWidgets import (
 
 from app import config
 from app.core.vibi_client import VibiClient
+from app.core.platform_utils import open_path
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 
@@ -300,11 +298,6 @@ class SettingsTab(QWidget):
         """Mở thư mục chứa projects trong File Explorer."""
         target = config.PROJECTS_DIR
         try:
-            if sys.platform.startswith("win"):
-                os.startfile(str(target))
-            elif sys.platform == "darwin":
-                subprocess.run(["open", str(target)])
-            else:
-                subprocess.run(["xdg-open", str(target)])
+            open_path(target)
         except Exception as e:
             QMessageBox.warning(self, "Lỗi", f"Không thể mở thư mục: {e}")

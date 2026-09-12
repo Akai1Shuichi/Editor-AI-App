@@ -1,6 +1,3 @@
-import os
-import sys
-import subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any, Optional
@@ -16,6 +13,7 @@ from PyQt6.QtWidgets import (
 
 from app import config
 from app.core import video_creator
+from app.core.platform_utils import open_path
 
 
 class VideoRenderWorker(QThread):
@@ -863,12 +861,7 @@ class VideoTab(QWidget):
     def open_video_file(self):
         if self.last_output_video and self.last_output_video.exists():
             try:
-                if sys.platform.startswith("win"):
-                    os.startfile(str(self.last_output_video))
-                elif sys.platform == "darwin":
-                    subprocess.run(["open", str(self.last_output_video)])
-                else:
-                    subprocess.run(["xdg-open", str(self.last_output_video)])
+                open_path(self.last_output_video)
             except Exception as e:
                 QMessageBox.warning(self, "Không thể mở", f"Lỗi mở video: {e}")
 
@@ -878,12 +871,7 @@ class VideoTab(QWidget):
             out_dir = self.last_output_video.parent
 
         try:
-            if sys.platform.startswith("win"):
-                os.startfile(str(out_dir))
-            elif sys.platform == "darwin":
-                subprocess.run(["open", str(out_dir)])
-            else:
-                subprocess.run(["xdg-open", str(out_dir)])
+            open_path(out_dir)
         except Exception as e:
             QMessageBox.warning(self, "Không thể mở", f"Lỗi mở thư mục: {e}")
 
