@@ -262,16 +262,7 @@ class SettingsTab(QWidget):
                 )
                 self._pending_api_key = None
 
-            credits = info.get("credit_balance")
-            if credits is None:
-                credits = info.get("credits", 0)
-            name = info.get("name") or "User"
-            email = info.get("email") or "-"
-
-            self.lbl_credits.setText(f"Số dư: {credits:,} credits")
-            self.lbl_credits.setStyleSheet("font-size: 14px; font-weight: 700; color: #10b981;")
-            self.lbl_user.setText(f"Người dùng: {name}")
-            self.lbl_email.setText(f"Email: {email}")
+            self.update_account_info(info)
             self.account_updated.emit(info)
         else:
             if pending_api_key == checked_key:
@@ -279,6 +270,19 @@ class SettingsTab(QWidget):
             self.lbl_credits.setText("Không thể kết nối")
             self.lbl_credits.setStyleSheet("font-size: 13px; font-weight: 600; color: #f87171;")
             QMessageBox.critical(self, "Lỗi kiểm tra", error_msg)
+
+    def update_account_info(self, info: dict):
+        """Cập nhật hiển thị thông tin tài khoản và số dư credits trên giao diện Settings."""
+        credits = info.get("credit_balance")
+        if credits is None:
+            credits = info.get("credits", 0)
+        name = info.get("name") or "User"
+        email = info.get("email") or "-"
+
+        self.lbl_credits.setText(f"Số dư: {credits:,} credits")
+        self.lbl_credits.setStyleSheet("font-size: 14px; font-weight: 700; color: #10b981;")
+        self.lbl_user.setText(f"Người dùng: {name}")
+        self.lbl_email.setText(f"Email: {email}")
 
     def change_projects_dir(self):
         """Cho phép user chọn thư mục lưu projects mới."""

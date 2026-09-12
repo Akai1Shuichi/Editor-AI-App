@@ -28,6 +28,7 @@ class TTSWorker(QThread):
     status_updated = pyqtSignal(str)
     progress_updated = pyqtSignal(int)
     task_finished = pyqtSignal(bool, str, str, str)
+    account_updated = pyqtSignal(dict)
 
     def __init__(
         self,
@@ -56,14 +57,31 @@ class TTSWorker(QThread):
     def cancel(self):
         self._is_cancelled = True
 
+    def _refresh_credits_safely(self, client: VibiClient):
+        try:
+            info = client.get_account_info()
+            self.account_updated.emit(info)
+        except Exception:
+            pass
+
     def run(self):
         client = VibiClient()
         if not client.is_configured():
             self.task_finished.emit(False, "", "", "Chưa có Voice API Key! Vào Cài đặt để nhập Key.")
             return
 
+        self.status_updated.emit("Đang kiểm tra tài khoản và số dư...")
+        self.progress_updated.emit(10)
+
+        try:
+            acc_info = client.get_account_info()
+            self.account_updated.emit(acc_info)
+        except Exception as e:
+            self.task_finished.emit(False, "", "", f"Lỗi xác thực Voice API: {e}")
+            return
+
         self.status_updated.emit("Đang gửi yêu cầu lên Voice API...")
-        self.progress_updated.emit(15)
+        self.progress_updated.emit(20)
 
         chunks = VibiClient.split_long_text(self.text, max_chars=3500)
         total_chunks = len(chunks)
@@ -74,6 +92,7 @@ class TTSWorker(QThread):
         try:
             for idx, chunk in enumerate(chunks, 1):
                 if self._is_cancelled:
+                    self._refresh_credits_safely(client)
                     self.task_finished.emit(False, "", "", "Tác vụ đã bị hủy.")
                     return
 
@@ -109,6 +128,7 @@ class TTSWorker(QThread):
 
             self.progress_updated.emit(100)
             self.status_updated.emit("Hoàn tất tạo giọng nói.")
+            self._refresh_credits_safely(client)
             self.task_finished.emit(
                 True,
                 str(last_audio) if last_audio else "",
@@ -116,6 +136,7 @@ class TTSWorker(QThread):
                 "Thành công!"
             )
         except Exception as e:
+            self._refresh_credits_safely(client)
             self.task_finished.emit(False, "", "", str(e))
 
 
@@ -132,6 +153,7 @@ class TTSTab(QWidget):
     request_voice_lookup = pyqtSignal()
     send_to_video = pyqtSignal(str, str)
     voice_generated = pyqtSignal(str, str)
+    account_updated = pyqtSignal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -928,8 +950,16 @@ class TTSTab(QWidget):
         )
         self.worker.status_updated.connect(self.lbl_status.setText)
         self.worker.progress_updated.connect(self.progress_bar.setValue)
+        self.worker.account_updated.connect(self._on_account_updated)
         self.worker.task_finished.connect(self.on_tts_finished)
         self.worker.start()
+
+    def _on_account_updated(self, info: dict):
+        credits = info.get("credit_balance")
+        if credits is None:
+            credits = info.get("credits", 0)
+        self.set_credit_balance(credits)
+        self.account_updated.emit(info)
 
     def cancel_tts(self):
         if self.worker and self.worker.isRunning():

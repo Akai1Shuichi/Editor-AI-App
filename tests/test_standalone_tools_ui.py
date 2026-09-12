@@ -39,6 +39,9 @@ class _SilentMediaPlayer(QObject):
     def setSource(self, _source):
         pass
 
+    def stop(self):
+        pass
+
 
 class _SilentAudioOutput:
     def setVolume(self, _volume):
@@ -52,17 +55,17 @@ class _DeferredAccountCheckThread(QObject):
     def __init__(self, api_key=None):
         super().__init__()
         self.api_key = api_key
-        self.started = False
         _DeferredAccountCheckThread.last_instance = self
 
     def start(self):
-        self.started = True
+        pass
 
 
 class _IdleTTSWorker(QObject):
     status_updated = pyqtSignal(str)
     progress_updated = pyqtSignal(int)
     task_finished = pyqtSignal(bool, str, str, str)
+    account_updated = pyqtSignal(dict)
     last_instance = None
 
     def __init__(self, **kwargs):
@@ -388,7 +391,7 @@ class StandaloneToolsUiTests(unittest.TestCase):
                 any(text.startswith("Tự động lưu") for text in header_texts)
             )
             self.assertEqual(tab.txt_input.toPlainText(), "Nội dung độc lập")
-            self.assertEqual(tab.edit_voice_id.text(), "voice-sidebar")
+            self.assertEqual(tab.current_voice_id(), "voice-sidebar")
             self.assertEqual(tab.combo_model.currentText(), "eleven_flash_v2_5")
             self.assertEqual(tab.slider_sp.value(), 108)
             self.assertFalse(tab.chk_srt.isChecked())
@@ -511,7 +514,7 @@ class StandaloneToolsUiTests(unittest.TestCase):
             tab = TTSTab()
             tab.configure_standalone(self.store, output_dir)
             tab.txt_input.setPlainText("Nội dung")
-            tab.edit_voice_id.setText("voice-id")
+            tab.set_selected_voice_id("voice-id")
             tab.edit_output_name.setText("voice_retry")
             self.assertFalse(tab.btn_start.isHidden())
             self.assertTrue(tab.btn_cancel.isHidden())

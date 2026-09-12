@@ -191,6 +191,8 @@ class MainWindow(QMainWindow):
         self.settings_tab.api_key_saved.connect(self.on_api_key_saved)
         self.settings_tab.account_updated.connect(self.on_account_updated)
         self.settings_tab.request_pricing.connect(lambda: self.switch_page(4))
+        self.tts_tab.account_updated.connect(self.on_account_updated)
+        self.project_workspace.tts_tab.account_updated.connect(self.on_account_updated)
         self.switch_page(self.standalone_state.load_last_page())
 
     def create_nav_btn(self, title: str, index: int) -> QPushButton:
@@ -222,6 +224,7 @@ class MainWindow(QMainWindow):
             credits = info.get("credits", 0)
         self.tts_tab.set_credit_balance(credits)
         self.project_workspace.tts_tab.set_credit_balance(credits)
+        self.settings_tab.update_account_info(info)
         self.api_chip.setText(f"● Voice API: {credits:,} credits")
         self.api_chip.setStyleSheet("background-color: #064e3b; border: 1px solid #065f46; color: #34d399; border-radius: 6px; padding: 6px 10px; font-size: 11px; font-weight: 600;")
 
