@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QLabel, QPushButton, QStackedWidget, QFrame
@@ -10,6 +13,9 @@ from app.ui.project_workspace import ProjectWorkspace
 from app.ui.watermark_tab import WatermarkTab
 from app.ui.tts_tab import TTSTab
 from app.ui.settings_tab import SettingsTab
+from app.ui.pricing_tab import PricingTab
+
+ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 
 
 class MainWindow(QMainWindow):
@@ -33,9 +39,13 @@ class MainWindow(QMainWindow):
         central_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setCentralWidget(central_widget)
 
-        root_layout = QHBoxLayout(central_widget)
+        root_layout = QVBoxLayout(central_widget)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
+
+        workspace_layout = QHBoxLayout()
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.setSpacing(0)
 
         # ================= SIDEBAR =================
         sidebar = QFrame()
@@ -63,17 +73,19 @@ class MainWindow(QMainWindow):
         self.btn_nav_watermark = self.create_nav_btn("🍌  Gỡ watermark Google Flow", 1)
         self.btn_nav_tts = self.create_nav_btn("🎙  Tạo Voice TTS", 2)
         self.btn_nav_settings = self.create_nav_btn("⚙  Cài đặt", 3)
+        self.btn_nav_pricing = self.create_nav_btn("🏷  Bảng giá", 4)
 
         sb_layout.addWidget(self.btn_nav_project)
         sb_layout.addWidget(self.btn_nav_watermark)
         sb_layout.addWidget(self.btn_nav_tts)
         sb_layout.addWidget(self.btn_nav_settings)
+        sb_layout.addWidget(self.btn_nav_pricing)
         sb_layout.addStretch()
 
         # Sidebar Footer: Chứa badge Voice API và số dư Credits
-        footer = QWidget()
-        footer.setObjectName("sidebar_footer")
-        f_layout = QVBoxLayout(footer)
+        self.sidebar_footer = QWidget()
+        self.sidebar_footer.setObjectName("sidebar_footer")
+        f_layout = QVBoxLayout(self.sidebar_footer)
         f_layout.setContentsMargins(12, 12, 12, 12)
         f_layout.setSpacing(0)
 
@@ -82,8 +94,8 @@ class MainWindow(QMainWindow):
         self.api_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         f_layout.addWidget(self.api_chip)
 
-        sb_layout.addWidget(footer)
-        root_layout.addWidget(sidebar)
+        sb_layout.addWidget(self.sidebar_footer)
+        workspace_layout.addWidget(sidebar)
 
         # ================= CONTENT AREA =================
         content_container = QWidget()
@@ -106,6 +118,7 @@ class MainWindow(QMainWindow):
         self.watermark_tab = WatermarkTab()
         self.tts_tab = TTSTab()
         self.settings_tab = SettingsTab()
+        self.pricing_tab = PricingTab()
 
         self.watermark_tab.configure_standalone(
             self.standalone_state, config.WATERMARK_DOWNLOADS_DIR
@@ -118,13 +131,66 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.watermark_tab)
         self.stack.addWidget(self.tts_tab)
         self.stack.addWidget(self.settings_tab)
+        self.stack.addWidget(self.pricing_tab)
 
         content_layout.addWidget(self.stack)
-        root_layout.addWidget(content_container)
+        workspace_layout.addWidget(content_container)
+        root_layout.addLayout(workspace_layout, stretch=1)
+
+        self.app_footer = QFrame()
+        self.app_footer.setObjectName("app_footer")
+        self.app_footer.setMinimumHeight(60)
+        footer_layout = QHBoxLayout(self.app_footer)
+        footer_layout.setContentsMargins(24, 10, 24, 10)
+        footer_layout.setSpacing(14)
+
+        self.footer_support = QWidget(self.app_footer)
+        support_layout = QHBoxLayout(self.footer_support)
+        support_layout.setContentsMargins(0, 0, 0, 0)
+        support_layout.setSpacing(6)
+
+        self.lbl_footer_telegram_icon = QLabel()
+        self.lbl_footer_telegram_icon.setPixmap(
+            QPixmap(str(ICONS_DIR / "telegram.svg")).scaled(
+                20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        self.lbl_footer_telegram = QLabel(
+            'Shop AI: '
+            '<a href="https://t.me/DichVuIT_bot" '
+            'style="color: #93c5fd; text-decoration: underline;">@DichVuIT_bot</a>'
+        )
+        self.lbl_footer_telegram.setOpenExternalLinks(True)
+        self.lbl_footer_telegram.setStyleSheet("color: #dbeafe; font-size: 12px; font-weight: 600;")
+
+        self.lbl_footer_zalo_icon = QLabel()
+        self.lbl_footer_zalo_icon.setPixmap(
+            QPixmap(str(ICONS_DIR / "zalo.svg")).scaled(
+                20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        self.lbl_footer_zalo = QLabel(
+            '<a href="https://zalo.me/g/2h4r4fbobrg66e9haa3q" '
+            'style="color: #93c5fd; text-decoration: underline;">Hỗ trợ tại Zalo</a>'
+        )
+        self.lbl_footer_zalo.setOpenExternalLinks(True)
+        self.lbl_footer_zalo.setStyleSheet("color: #dbeafe; font-size: 12px; font-weight: 600;")
+
+        support_layout.addWidget(self.lbl_footer_telegram_icon)
+        support_layout.addWidget(self.lbl_footer_telegram)
+        support_layout.addSpacing(18)
+        support_layout.addWidget(self.lbl_footer_zalo_icon)
+        support_layout.addWidget(self.lbl_footer_zalo)
+        footer_layout.addWidget(self.footer_support)
+        footer_layout.addStretch()
+        root_layout.addWidget(self.app_footer)
 
         # Inter-tab Connections
         self.settings_tab.api_key_saved.connect(self.on_api_key_saved)
         self.settings_tab.account_updated.connect(self.on_account_updated)
+        self.settings_tab.request_pricing.connect(lambda: self.switch_page(4))
         self.switch_page(self.standalone_state.load_last_page())
 
     def create_nav_btn(self, title: str, index: int) -> QPushButton:

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import Qt, QThread, QSize, pyqtSignal
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QFrame, QMessageBox, QFileDialog
@@ -42,6 +42,7 @@ class SettingsTab(QWidget):
     """Tab quản lý API Key, kiểm tra số dư Credits và cấu hình hệ thống - Thiết kế gọn gàng, chuẩn form UX."""
     api_key_saved = pyqtSignal(str)
     account_updated = pyqtSignal(dict)
+    request_pricing = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -110,44 +111,6 @@ class SettingsTab(QWidget):
         key_row.addWidget(self.btn_save_key)
         ap_layout.addLayout(key_row)
 
-        support_row = QHBoxLayout()
-        support_row.setContentsMargins(0, 0, 0, 0)
-        support_row.setSpacing(6)
-
-        self.lbl_telegram_icon = QLabel()
-        self.lbl_telegram_icon.setPixmap(
-            QPixmap(str(ICONS_DIR / "telegram.svg")).scaled(
-                16, 16, Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-        )
-        self.lbl_buy_api_key = QLabel(
-            'Mua API Voice Key tại đây: '
-            '<a href="https://t.me/DichVuIT_bot">@DichVuIT_bot</a>'
-        )
-        self.lbl_buy_api_key.setOpenExternalLinks(True)
-        self.lbl_buy_api_key.setStyleSheet("color: #9ca3af; font-size: 12px;")
-        support_row.addWidget(self.lbl_telegram_icon)
-        support_row.addWidget(self.lbl_buy_api_key)
-        support_row.addSpacing(12)
-
-        self.lbl_zalo_icon = QLabel()
-        self.lbl_zalo_icon.setPixmap(
-            QPixmap(str(ICONS_DIR / "zalo.svg")).scaled(
-                16, 16, Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-        )
-        self.lbl_zalo_help = QLabel(
-            '<a href="https://zalo.me/g/2h4r4fbobrg66e9haa3q">Hỗ trợ tại Zalo</a>'
-        )
-        self.lbl_zalo_help.setOpenExternalLinks(True)
-        self.lbl_zalo_help.setStyleSheet("color: #9ca3af; font-size: 12px;")
-        support_row.addWidget(self.lbl_zalo_icon)
-        support_row.addWidget(self.lbl_zalo_help)
-        support_row.addStretch()
-        ap_layout.addLayout(support_row)
-
         # Thông tin tài khoản (Dòng thẻ thông tin gọn gàng)
         self.info_box = QFrame()
         self.info_box.setStyleSheet("background-color: #14151b; border: 1px solid #23252d; border-radius: 6px; padding: 8px;")
@@ -169,6 +132,30 @@ class SettingsTab(QWidget):
         ib_layout.addWidget(self.lbl_email)
 
         ap_layout.addWidget(self.info_box)
+
+        self.lbl_vibi_test_key = QLabel(
+            'Lấy API Key test tại đây: '
+            '<a href="https://vibi.pro" '
+            'style="color: #60a5fa; text-decoration: underline;">Vibi.pro</a>'
+        )
+        self.lbl_vibi_test_key.setOpenExternalLinks(True)
+        self.lbl_vibi_test_key.setStyleSheet(
+            "color: #dbeafe; background-color: #182235; "
+            "border: 1px solid #2d5d94; border-radius: 6px; "
+            "padding: 6px 9px; font-size: 12px; font-weight: 600;"
+        )
+        key_help_row = QHBoxLayout()
+        key_help_row.setContentsMargins(0, 0, 0, 0)
+        key_help_row.setSpacing(8)
+        key_help_row.addWidget(self.lbl_vibi_test_key)
+        key_help_row.addStretch()
+        self.btn_buy_api_key = QPushButton("Mua API Key")
+        self.btn_buy_api_key.setObjectName("btn_buy_api")
+        self.btn_buy_api_key.setToolTip("Xem bảng giá Voice API")
+        self.btn_buy_api_key.clicked.connect(self.request_pricing.emit)
+        key_help_row.addWidget(self.btn_buy_api_key)
+        ap_layout.addLayout(key_help_row)
+
         layout.addWidget(acc_panel)
 
         # 2. Panel thư mục dự án

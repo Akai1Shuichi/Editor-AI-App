@@ -40,7 +40,7 @@ QWidget#central_widget, QWidget#content_container {
     background-color: #121316;
 }
 
-#watermark_tab, #tts_tab, #voice_lookup_tab, #scene_tab, #video_tab, #project_tab, #settings_tab {
+#watermark_tab, #tts_tab, #voice_lookup_tab, #scene_tab, #video_tab, #project_tab, #settings_tab, #pricing_tab {
     background-color: #121316;
 }
 
@@ -143,6 +143,11 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     border-top: 1px solid #23252c;
 }
 
+#app_footer {
+    background-color: #172033;
+    border-top: 2px solid #2563eb;
+}
+
 /* ================= STANDALONE TOOL HEADER ================= */
 #tool_header {
     background-color: transparent;
@@ -174,6 +179,37 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 #output_path {
     color: #8b95a7;
     font-size: 11px;
+}
+
+/* ================= API KEY PURCHASE OFFER ================= */
+#bot_offer {
+    background-color: #172033;
+    border: 1px solid #29466f;
+    border-radius: 7px;
+}
+
+#bot_offer_name {
+    color: #f8fafc;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+#bot_offer_original_price {
+    color: #94a3b8;
+    font-size: 12px;
+    text-decoration: line-through;
+}
+
+#bot_offer_sale_price {
+    color: #34d399;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+#bot_purchase_link {
+    color: #93c5fd;
+    font-size: 12px;
+    font-weight: 700;
 }
 
 /* ================= TOP BAR ================= */
@@ -344,6 +380,18 @@ QPushButton#btn_primary:hover {
 
 QPushButton#btn_primary:pressed {
     background-color: #1e40af;
+}
+
+QPushButton#btn_buy_api {
+    background-color: #2563eb;
+    border: 1px solid #1d4ed8;
+    color: #ffffff;
+    font-weight: 700;
+}
+
+QPushButton#btn_buy_api:hover {
+    background-color: #1d4ed8;
+    border-color: #1e40af;
 }
 
 QPushButton#btn_danger {
