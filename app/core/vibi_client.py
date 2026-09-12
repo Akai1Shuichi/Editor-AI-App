@@ -248,18 +248,18 @@ class VibiClient:
                 voice_settings = {
                     "stability": config.DEFAULT_VIBI_STABILITY,
                     "similarity_boost": config.DEFAULT_VIBI_SIMILARITY,
-                    "speed": config.DEFAULT_VIBI_SPEED,
-                    "use_speaker_boost": True
+                    "speed": config.DEFAULT_VIBI_SPEED
                 }
 
-        payload = {
+        payload: Dict[str, Any] = {
             "text": text,
-            "model_id": model_id,
-            "provider": provider,
             "language_code": language_code,
-            "voice_settings": voice_settings,
-            "export_transcript": export_transcript
+            "voice_settings": voice_settings
         }
+        if provider != "capcut":
+            payload["model_id"] = model_id
+        if provider != "elevenlabs":
+            payload["provider"] = provider
 
         try:
             res = self.session.post(url, headers=self._get_headers(), json=payload, timeout=60)

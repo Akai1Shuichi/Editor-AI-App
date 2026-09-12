@@ -215,8 +215,10 @@ class SettingsTab(QWidget):
             QMessageBox.warning(self, "Chưa có Key", "Vui lòng nhập Voice API Key!")
             return
 
-        self._pending_api_key = key
-        self._start_account_check(key)
+        config.save_env_variable("VIBI_API_KEY", key)
+        self.api_key_saved.emit(key)
+        QMessageBox.information(self, "Đã lưu", "Đã lưu Voice API Key thành công!")
+        self.check_account()
 
     def check_account(self):
         key = self.edit_key.text().strip()

@@ -474,8 +474,8 @@ class TTSTab(QWidget):
         self.combo_provider.addItem("🎬 CapCut", "capcut")
         self.combo_provider.currentIndexChanged.connect(self.on_provider_changed)
 
-        lbl_m = QLabel("Model:")
-        lbl_m.setProperty("class", "section_label")
+        self.lbl_m = QLabel("Model:")
+        self.lbl_m.setProperty("class", "section_label")
         self.combo_model = QComboBox()
         self.combo_model.addItems(["eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5"])
         self.combo_model.currentIndexChanged.connect(self.on_text_changed)
@@ -488,7 +488,7 @@ class TTSTab(QWidget):
         row1.addWidget(lbl_prov)
         row1.addWidget(self.combo_provider)
         row1.addSpacing(6)
-        row1.addWidget(lbl_m)
+        row1.addWidget(self.lbl_m)
         row1.addWidget(self.combo_model, stretch=2)
         row1.addWidget(lbl_l)
         row1.addWidget(self.combo_lang)
@@ -707,7 +707,8 @@ class TTSTab(QWidget):
                 self.voice_lookup_tab.load_voices()
 
     def _on_st_slider_changed(self, v: int):
-        self.lbl_st_val.setText(f"{v / 100.0:.2f}")
+        provider = self.combo_provider.currentData() or "elevenlabs"
+        self.lbl_st_val.setText(str(v) if provider in ("minimax", "capcut") else f"{v / 100.0:.2f}")
 
     def _on_sim_slider_changed(self, v: int):
         self.lbl_sim_val.setText(f"{v / 100.0:.2f}")
@@ -785,15 +786,32 @@ class TTSTab(QWidget):
             self.combo_model.addItems(["eleven_v3", "eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5"])
             self.combo_lang.addItems(["vi", "en", "ja", "ko", "zh", "fr", "de", "es"])
 
-        # Giữ cùng bộ điều khiển trực quan cho mọi nền tảng TTS.
-        self.lbl_st.setText("Độ ổn định:")
-        self.slider_st.setRange(0, 100)
-        self.slider_st.setValue(int(config.DEFAULT_VIBI_STABILITY * 100))
+        is_elevenlabs = provider == "elevenlabs"
+        is_minimax = provider == "minimax"
+        is_capcut = provider == "capcut"
 
-        self.lbl_sim.setText("Độ tương đồng:")
-        self.slider_sim.setEnabled(True)
-        self.slider_sim.setRange(0, 100)
-        self.slider_sim.setValue(int(config.DEFAULT_VIBI_SIMILARITY * 100))
+        self.lbl_m.setVisible(not is_capcut)
+        self.combo_model.setVisible(not is_capcut)
+
+        self.lbl_st.setText("Độ ổn định:" if is_elevenlabs else "Cao độ:")
+        if is_elevenlabs:
+            self.slider_st.setRange(0, 100)
+            self.slider_st.setValue(int(config.DEFAULT_VIBI_STABILITY * 100))
+        else:
+            self.slider_st.setRange(-12, 12)
+            self.slider_st.setValue(0)
+
+        self.lbl_sim.setVisible(not is_capcut)
+        self.slider_sim.setVisible(not is_capcut)
+        self.lbl_sim_val.setVisible(not is_capcut)
+        if is_elevenlabs:
+            self.lbl_sim.setText("Độ tương đồng:")
+            self.slider_sim.setRange(0, 100)
+            self.slider_sim.setValue(int(config.DEFAULT_VIBI_SIMILARITY * 100))
+        elif is_minimax:
+            self.lbl_sim.setText("Âm lượng:")
+            self.slider_sim.setRange(0, 100)
+            self.slider_sim.setValue(100)
 
         self.slider_sp.setRange(70, 150)
         self.slider_sp.setValue(int(config.DEFAULT_VIBI_SPEED * 100))
@@ -858,20 +876,19 @@ class TTSTab(QWidget):
         if provider == "minimax":
             settings = {
                 "speed": self.slider_sp.value() / 100.0,
-                "pitch": (self.slider_st.value() - 50) * 24 / 100,
+                "pitch": self.slider_st.value(),
                 "vol": self.slider_sim.value() / 100.0
             }
         elif provider == "capcut":
             settings = {
                 "speed": self.slider_sp.value() / 100.0,
-                "pitch": (self.slider_st.value() - 50) * 24 / 100
+                "pitch": self.slider_st.value()
             }
         else:
             settings = {
                 "stability": self.slider_st.value() / 100.0,
                 "similarity_boost": self.slider_sim.value() / 100.0,
-                "speed": self.slider_sp.value() / 100.0,
-                "use_speaker_boost": True
+                "speed": self.slider_sp.value() / 100.0
             }
 
         output_filename = "voice.mp3"
