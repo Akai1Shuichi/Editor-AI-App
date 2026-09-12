@@ -24,6 +24,19 @@ class SettingsApiKeyHelpTests(unittest.TestCase):
         self.assertIn("https://t.me/DichVuIT_bot", tab.lbl_buy_api_key.text())
         self.assertTrue(tab.lbl_buy_api_key.openExternalLinks())
 
+    def test_support_links_include_zalo_and_telegram_icons(self):
+        original_api_key = config.VIBI_API_KEY
+        try:
+            config.VIBI_API_KEY = ""
+            tab = SettingsTab()
+        finally:
+            config.VIBI_API_KEY = original_api_key
+
+        self.assertFalse(tab.lbl_telegram_icon.pixmap().isNull())
+        self.assertFalse(tab.lbl_zalo_icon.pixmap().isNull())
+        self.assertIn("https://zalo.me/g/2h4r4fbobrg66e9haa3q", tab.lbl_zalo_help.text())
+        self.assertTrue(tab.lbl_zalo_help.openExternalLinks())
+
 
 if __name__ == "__main__":
     unittest.main()
