@@ -17,6 +17,7 @@ jobs:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -45,7 +46,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxcb-cursor0 libegl1 libxkbcommon-x11-0 zip
+          sudo apt-get install -y libpulse0 libxcb-cursor0 libegl1 libxkbcommon-x11-0 zip
 
       - name: Run unit tests
         env:
