@@ -261,7 +261,7 @@ class VoiceLoaderThread(QThread):
                         "voice_id": str(v.get("voice_id") or ""),
                         "name": v.get("name") or "",
                         "provider": provider_raw,
-                        "provider_display": f"Cộng Đồng ({provider_raw.capitalize()})",
+                        "provider_display": f"Phổ Biến ({provider_raw.capitalize()})",
                         "gender": (v.get("gender") or "-").capitalize(),
                         "language": cat_str,
                         "preview_url": v.get("preview_url") or "",
@@ -311,7 +311,7 @@ class VoiceLookupTab(QWidget):
 
         # Nguồn giọng
         self.combo_source = QComboBox()
-        self.combo_source.addItem("🌐 Giọng Cộng Đồng (Community)", "community_voices")
+        self.combo_source.addItem("🌐 Giọng Phổ Biến", "community_voices")
         self.combo_source.addItem("⚡ ElevenLabs (Mặc định)", "elevenlabs_default")
         self.combo_source.addItem("⚡ ElevenLabs (Thư viện cộng đồng)", "elevenlabs_shared")
         self.combo_source.addItem("🤖 MiniMax (Giọng hệ thống)", "minimax_system")

@@ -254,7 +254,8 @@ class VibiClient:
         payload: Dict[str, Any] = {
             "text": text,
             "language_code": language_code,
-            "voice_settings": voice_settings
+            "voice_settings": voice_settings,
+            "export_transcript": export_transcript,
         }
         if provider != "capcut":
             payload["model_id"] = model_id
@@ -375,6 +376,7 @@ class VibiClient:
 
         result = completed_task.get("result", {})
         audio_url = result.get("audio_url")
+        srt_url = result.get("srt_url")
         if not audio_url:
             raise VibiAPIError("Task hoàn thành nhưng không tìm thấy audio_url trong kết quả!")
 
@@ -391,12 +393,7 @@ class VibiClient:
         self.download_file(audio_url, audio_path)
 
         transcript_path: Optional[Path] = None
-        transcript_url = (
-            result.get("transcript_url")
-            or result.get("srt_url")
-            or result.get("subtitles_url")
-            or result.get("subtitle_url")
-        )
+        transcript_url = srt_url
         srt_name = audio_path.stem + ".srt"
         candidate_srt = target_dir / srt_name
         if transcript_url:
