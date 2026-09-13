@@ -2,11 +2,12 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl, QTimer
+from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
     QLineEdit, QPushButton, QComboBox, QSlider, QCheckBox,
-    QProgressBar, QFrame, QMessageBox, QFileDialog, QScrollArea, QTabWidget,
+    QFrame, QMessageBox, QFileDialog, QScrollArea, QTabWidget,
     QSizePolicy, QLayout
 )
 
@@ -21,6 +22,42 @@ from app.core.standalone_state import (
 )
 from app.ui.voice_lookup_tab import VoiceLookupTab
 from app.ui.widgets import ToggleSwitch
+
+
+class LoadingSpinner(QWidget):
+    """Spinner tròn nhỏ cho các tác vụ đang xử lý."""
+
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._step = 0
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._advance)
+        self.setFixedSize(18, 18)
+        self.setVisible(False)
+
+    def start(self):
+        self._step = 0
+        self.setVisible(True)
+        self._timer.start(80)
+        self.update()
+
+    def stop(self):
+        self._timer.stop()
+        self.setVisible(False)
+
+    def _advance(self):
+        self._step = (self._step + 1) % 12
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.translate(self.width() / 2, self.height() / 2)
+        for index in range(12):
+            alpha = max(45, 255 - ((index - self._step) % 12) * 18)
+            painter.setPen(QPen(QColor(59, 130, 246, alpha), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawLine(0, -7, 0, -4)
+            painter.rotate(30)
 
 class TTSWorker(QThread):
     """Worker tạo giọng nói qua Vibi API."""
@@ -102,11 +139,8 @@ class TTSWorker(QThread):
 
                 def on_prog(task_dict):
                     status = task_dict.get("status", "pending")
-                    p = task_dict.get("progress", 0)
                     chunk_info = f"Đoạn {idx}/{total_chunks}: " if total_chunks > 1 else ""
-                    self.status_updated.emit(f"{chunk_info}Trạng thái '{status}' ({p}%)...")
-                    base_p = int(20 + (idx - 1) * (70 / total_chunks) + (p * 0.7 / total_chunks))
-                    self.progress_updated.emit(min(base_p, 90))
+                    self.status_updated.emit(f"{chunk_info}Đang tạo giọng ({status})...")
 
                 audio_p, srt_p = client.generate_and_download(
                     text=chunk,
@@ -331,7 +365,7 @@ class TTSTab(QWidget):
             self.btn_stop.setEnabled(False)
             self.btn_to_video.setEnabled(False)
             self.slider_player.setRange(0, 0)
-            self.progress_bar.setValue(0)
+            self.loading_spinner.stop()
         self.project = project
         if hasattr(self, "lbl_project_badge"):
             if project:
@@ -662,13 +696,17 @@ class TTSTab(QWidget):
         action_bar.addWidget(self.btn_cancel, stretch=2)
         tts_layout.addLayout(action_bar)
 
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setValue(0)
+        self.loading_spinner = LoadingSpinner()
         self.lbl_status = QLabel("Sẵn sàng.")
         self.lbl_status.setStyleSheet("color: #6b7280; font-size: 11px;")
 
-        tts_layout.addWidget(self.progress_bar)
-        tts_layout.addWidget(self.lbl_status)
+        status_row = QHBoxLayout()
+        status_row.setContentsMargins(0, 0, 0, 0)
+        status_row.setSpacing(6)
+        status_row.addWidget(self.loading_spinner)
+        status_row.addWidget(self.lbl_status)
+        status_row.addStretch()
+        tts_layout.addLayout(status_row)
 
         # 4. Trình phát audio gọn gàng
         player_panel = QFrame()
@@ -964,7 +1002,7 @@ class TTSTab(QWidget):
         self.btn_start.setVisible(False)
         self.btn_cancel.setEnabled(True)
         self.btn_cancel.setVisible(True)
-        self.progress_bar.setValue(10)
+        self.loading_spinner.start()
         self.lbl_status.setText(f"Đang kết nối Voice API ({provider.upper()})...")
 
         self.worker = TTSWorker(
@@ -979,7 +1017,6 @@ class TTSTab(QWidget):
             output_dir=out_dir
         )
         self.worker.status_updated.connect(self.lbl_status.setText)
-        self.worker.progress_updated.connect(self.progress_bar.setValue)
         self.worker.account_updated.connect(self._on_account_updated)
         self.worker.task_finished.connect(self.on_tts_finished)
         self.worker.start()
@@ -998,6 +1035,7 @@ class TTSTab(QWidget):
             self.btn_cancel.setEnabled(False)
 
     def on_tts_finished(self, success: bool, audio_path: str, srt_path: str, msg: str):
+        self.loading_spinner.stop()
         self.btn_start.setEnabled(True)
         self.btn_start.setVisible(True)
         self.btn_cancel.setEnabled(False)
@@ -1069,10 +1107,10 @@ class TTSTab(QWidget):
             is_cancelled = "hủy" in msg.lower() or "cancelled" in msg.lower()
             if is_cancelled:
                 self.lbl_status.setText("Đã hủy tác vụ tạo giọng nói.")
-                self.progress_bar.setValue(0)
+                self.loading_spinner.stop()
             else:
                 self.lbl_status.setText(f"Lỗi: {msg}")
-                self.progress_bar.setValue(0)
+                self.loading_spinner.stop()
                 QMessageBox.critical(self, "Lỗi tạo giọng", msg)
 
     def _on_to_video_clicked(self):
