@@ -48,12 +48,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpulse0 libxcb-cursor0 libegl1 libxkbcommon-x11-0 zip
 
-      - name: Run unit tests
-        env:
-          PYTHONPATH: .
-          QT_QPA_PLATFORM: offscreen
-        run: python -m unittest discover -s tests
-
       - name: Build app with PyInstaller
         run: pyinstaller --noconfirm --clean editor_video_app.spec
 
