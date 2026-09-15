@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QProgressBar, QTableWidget, QTableWidgetItem,
     QHeaderView, QCheckBox, QFrame, QMessageBox, QLineEdit, QSizePolicy,
-    QSplitter, QTabWidget
+    QTabWidget
 )
 
 from app.core.watermark_remover import GeminiWatermarkRemover
@@ -272,12 +272,15 @@ class WatermarkTab(QWidget):
         self.tool_header.setVisible(False)
         main_layout.addWidget(self.tool_header)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setObjectName("content_container")
+        content_layout = QHBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(14)
 
         # ================= CỘT TRÁI: ĐIỀU KHIỂN & DANH SÁCH =================
         left_box = QWidget()
+        left_box.setObjectName("watermark_controls")
         left_box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        left_box.setMinimumWidth(520)
         left_layout = QVBoxLayout(left_box)
         left_layout.setContentsMargins(0, 0, 8, 0)
         left_layout.setSpacing(10)
@@ -422,11 +425,13 @@ class WatermarkTab(QWidget):
         self.status_lbl.setStyleSheet("color: #6b7280; font-size: 11px;")
         left_layout.addWidget(self.status_lbl)
 
-        splitter.addWidget(left_box)
+        content_layout.addWidget(left_box)
 
         # ================= CỘT PHẢI: XEM TRƯỚC (PREVIEW) =================
         right_box = QWidget()
+        right_box.setObjectName("watermark_preview")
         right_box.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        right_box.setMinimumWidth(320)
         right_layout = QVBoxLayout(right_box)
         right_layout.setContentsMargins(8, 0, 0, 0)
         right_layout.setSpacing(8)
@@ -451,10 +456,11 @@ class WatermarkTab(QWidget):
         right_layout.addWidget(preview_title)
         right_layout.addWidget(self.preview_tabs, stretch=1)
 
-        splitter.addWidget(right_box)
-        splitter.setSizes([600, 360])
+        content_layout.addWidget(right_box)
+        content_layout.setStretch(0, 6)
+        content_layout.setStretch(1, 4)
 
-        main_layout.addWidget(splitter)
+        main_layout.addLayout(content_layout, stretch=1)
 
     def choose_files(self):
         files, _ = QFileDialog.getOpenFileNames(
