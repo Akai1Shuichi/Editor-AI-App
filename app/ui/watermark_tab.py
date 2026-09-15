@@ -2,12 +2,12 @@ from pathlib import Path
 from typing import List, Optional
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QAction, QPixmap, QDragEnterEvent, QDropEvent, QColor
+from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QProgressBar, QTableWidget, QTableWidgetItem,
     QHeaderView, QCheckBox, QFrame, QMessageBox, QLineEdit, QSizePolicy,
-    QMenu, QSplitter, QTabWidget
+    QSplitter, QTabWidget
 )
 
 from app.core.watermark_remover import GeminiWatermarkRemover
@@ -365,20 +365,15 @@ class WatermarkTab(QWidget):
         lbl_list_title.setProperty("class", "section_label")
         self.lbl_file_count = QLabel("0 ảnh")
         self.lbl_file_count.setObjectName("meta_label")
-        self.btn_list_menu = QPushButton("•••")
-        self.btn_list_menu.setObjectName("btn_icon")
-        self.btn_list_menu.setFixedWidth(38)
-        self.action_clear = QAction("Xóa hết", self)
-        self.action_clear.triggered.connect(self.clear_file_list)
-        list_menu = QMenu(self.btn_list_menu)
-        list_menu.addAction(self.action_clear)
-        self.btn_list_menu.setMenu(list_menu)
+        self.btn_clear_all = QPushButton("Xóa hết")
+        self.btn_clear_all.setObjectName("btn_subtle")
+        self.btn_clear_all.clicked.connect(self.clear_file_list)
 
         list_box.addWidget(lbl_list_title)
         list_box.addWidget(self.lbl_file_count)
         list_box.addStretch()
         list_box.addWidget(self.btn_delete_selected)
-        list_box.addWidget(self.btn_list_menu)
+        list_box.addWidget(self.btn_clear_all)
         left_layout.addLayout(list_box)
 
         # Bảng danh sách file
@@ -550,8 +545,7 @@ class WatermarkTab(QWidget):
         self.drop_area.setEnabled(enabled)
         self.btn_select_files.setEnabled(enabled)
         self.btn_select_folder.setEnabled(enabled)
-        self.action_clear.setEnabled(enabled)
-        self.btn_list_menu.setEnabled(enabled)
+        self.btn_clear_all.setEnabled(enabled)
         self.table.setEnabled(enabled)
         self.update_delete_selected_button()
 

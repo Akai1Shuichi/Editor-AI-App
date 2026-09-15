@@ -3,15 +3,12 @@
 from pathlib import Path
 
 from PyInstaller.building.build_main import Analysis, EXE, PYZ
-from PyInstaller.utils.hooks import collect_data_files
-
-
 block_cipher = None
 SPEC_DIR = Path(__file__).parent if "__file__" in globals() else Path.cwd()
 
 datas = [
     (str(SPEC_DIR / "app" / "assets"), "app/assets"),
-    *collect_data_files("imageio_ffmpeg"),
+    (str(SPEC_DIR / "assets" / "icon.ico"), "assets"),
 ]
 
 a = Analysis(
@@ -19,7 +16,7 @@ a = Analysis(
     pathex=[str(SPEC_DIR)],
     binaries=[],
     datas=datas,
-    hiddenimports=["imageio_ffmpeg"],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -40,6 +37,7 @@ exe = EXE(
     a.datas,
     [],
     name="EditorVideoApp",
+    icon=str(SPEC_DIR / "assets" / "icon.ico"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

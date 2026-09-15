@@ -1,4 +1,6 @@
-# ⚡ AI Media Studio (PyQt6 Modern Dark Theme)
+# ⚡ AI Watermark Remover — Giai đoạn 1
+
+> Bản phát hành hiện tại chỉ bao gồm công cụ gỡ watermark Google Flow. TTS, Dự án và ghép video sẽ được mở trong các giai đoạn sau để giữ bộ cài nhẹ.
 
 Ứng dụng Desktop chuyên nghiệp với giao diện **PyQt6 Studio Modern Dark Theme**, tổ chức toàn bộ quy trình sản xuất video dạng chuỗi khép kín trong từng Dự Án:
 

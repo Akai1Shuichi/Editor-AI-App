@@ -1,0 +1,14 @@
+t muốn release app từ editor video app  nhưng t chỉ muốn một phần trước sau dần dần mới mở ra hết nhưng t k muốn người dùng họ tải app nặng mb ngay từ đầu .
+
+
+Giai đoạn 1 : 
+app có remove watermark
+
+Giai đoạn 2 : 
+app có tạo voice tts
+
+Giai đoạn 3:
+app có dự án 
+
+Cách hợp lý nhất: giữ một codebase editor video app, nhưng ở bản release giai đoạn 1 chỉ import/register watermark_tab; TTS và Project để
+  module riêng, không import vào entry point. Khi giai đoạn 2/3 phát hành, mở module tương ứng và build bản mới.

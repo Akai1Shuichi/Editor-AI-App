@@ -61,6 +61,7 @@ $RECYCLE.BIN/
 *.swp
 *.swo
 documents/vibi
-tests/
+tests/*
+!tests/test_phase1_release.py
 build/
 dist/
