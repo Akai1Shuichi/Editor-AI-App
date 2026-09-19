@@ -119,53 +119,37 @@ class TTSWorker(QThread):
         self.status_updated.emit("Đang gửi yêu cầu lên Voice API...")
         self.progress_updated.emit(20)
 
-        chunks = VibiClient.split_long_text(self.text, max_chars=3500)
-        total_chunks = len(chunks)
-
-        last_audio = None
-        last_srt = None
-
         try:
-            for idx, chunk in enumerate(chunks, 1):
-                if self._is_cancelled:
-                    self._refresh_credits_safely(client)
-                    self.task_finished.emit(False, "", "", "Tác vụ đã bị hủy.")
-                    return
+            if self._is_cancelled:
+                self._refresh_credits_safely(client)
+                self.task_finished.emit(False, "", "", "Tác vụ đã bị hủy.")
+                return
 
-                chunk_filename = self.output_filename
-                if total_chunks > 1 and chunk_filename:
-                    stem = Path(chunk_filename).stem
-                    chunk_filename = f"{stem}_part_{idx}.mp3"
+            def on_prog(task_dict):
+                status = task_dict.get("status", "pending")
+                self.status_updated.emit(f"Đang tạo giọng ({status})...")
 
-                def on_prog(task_dict):
-                    status = task_dict.get("status", "pending")
-                    chunk_info = f"Đoạn {idx}/{total_chunks}: " if total_chunks > 1 else ""
-                    self.status_updated.emit(f"{chunk_info}Đang tạo giọng ({status})...")
-
-                audio_p, srt_p = client.generate_and_download(
-                    text=chunk,
-                    voice_id=self.voice_id,
-                    output_filename=chunk_filename,
-                    output_dir=self.output_dir,
-                    model_id=self.model_id,
-                    language_code=self.lang_code,
-                    provider=self.provider,
-                    voice_settings=self.voice_settings,
-                    export_transcript=self.export_srt,
-                    progress_callback=on_prog,
-                    is_cancelled=lambda: self._is_cancelled
-                )
-
-                last_audio = audio_p
-                last_srt = srt_p
+            audio_p, srt_p = client.generate_and_download(
+                text=self.text,
+                voice_id=self.voice_id,
+                output_filename=self.output_filename,
+                output_dir=self.output_dir,
+                model_id=self.model_id,
+                language_code=self.lang_code,
+                provider=self.provider,
+                voice_settings=self.voice_settings,
+                export_transcript=self.export_srt,
+                progress_callback=on_prog,
+                is_cancelled=lambda: self._is_cancelled
+            )
 
             self.progress_updated.emit(100)
             self.status_updated.emit("Hoàn tất tạo giọng nói.")
             self._refresh_credits_safely(client)
             self.task_finished.emit(
                 True,
-                str(last_audio) if last_audio else "",
-                str(last_srt) if last_srt else "",
+                str(audio_p) if audio_p else "",
+                str(srt_p) if srt_p else "",
                 "Thành công!"
             )
         except Exception as e:
