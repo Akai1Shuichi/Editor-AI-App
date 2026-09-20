@@ -1,0 +1,5 @@
+{
+  "version": "1.0",
+  "api_base_url": "http://localhost:3000/api/v1",
+  "software_code": "video-editor-app"
+}

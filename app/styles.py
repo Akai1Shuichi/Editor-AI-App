@@ -44,6 +44,11 @@ QWidget#central_widget, QWidget#content_container {
     background-color: #121316;
 }
 
+QFrame#update_bar {
+    background-color: #16171d;
+    border-bottom: 1px solid #23252c;
+}
+
 QScrollArea, QScrollArea > QWidget, QScrollArea > QWidget > QWidget {
     background-color: #121316;
     border: none;

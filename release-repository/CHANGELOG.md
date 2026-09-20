@@ -2,7 +2,7 @@
 
 ## Editor Video AI v1.0 — 17/09/2026
 
-- Ra mắt công cụ gỡ watermark Google Flow, Gemini và Imagen.
+- Ra mắt công cụ gỡ watermark Google Flow .
 - Hỗ trợ xử lý một ảnh hoặc nhiều ảnh cùng lúc.
 - Tự động nhận diện kích thước và vị trí watermark.
 - Thêm chế độ xem trước ảnh trước và sau khi xử lý.

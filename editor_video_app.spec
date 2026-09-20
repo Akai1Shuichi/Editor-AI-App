@@ -8,6 +8,7 @@ SPEC_DIR = Path(__file__).parent if "__file__" in globals() else Path.cwd()
 
 datas = [
     (str(SPEC_DIR / "app" / "assets"), "app/assets"),
+    (str(SPEC_DIR / "app" / "data"), "app/data"),
     (str(SPEC_DIR / "assets" / "icon.ico"), "assets"),
 ]
 
