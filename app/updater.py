@@ -37,6 +37,7 @@ DEFAULT_CONFIG = {
     "version": "1.0",
     "api_base_url": "http://localhost:3000/api/v1",
     "software_code": "s-editor",
+    "telemetry_debug": False,
 }
 
 
@@ -63,6 +64,10 @@ def load_api_base_url() -> str:
 
 def load_software_code() -> str:
     return str(load_config()["software_code"])
+
+
+def load_telemetry_debug() -> bool:
+    return bool(load_config().get("telemetry_debug", False))
 
 
 APP_VERSION = load_app_version()

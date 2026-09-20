@@ -203,7 +203,8 @@
       "requiresAuth": false,
       "body": {
         "device_id": "<sha-256-cua-device-id>",
-        "type": "WATERMARK_GGFLOW"
+        "type": "WATERMARK_GGFLOW",
+        "version": "1.0.0"
       },
       "responseExample": {
         "success": true,
@@ -212,6 +213,7 @@
           "id": "<uuid>",
           "deviceId": "<sha-256-cua-device-id>",
           "type": "WATERMARK_GGFLOW",
+          "version": "1.0.0",
           "createdAt": "2026-09-20T00:00:00.000Z"
         },
         "requestId": "<request-id>"
@@ -221,7 +223,7 @@
     {
       "name": "Kiểm tra thiết bị đã cài app",
       "method": "GET",
-      "path": "/installations/check/<deviceId>",
+      "path": "/installations/check/<deviceId>?version=1.0.0",
       "requiresAuth": false,
       "responseExample": {
         "success": true,
@@ -229,10 +231,15 @@
         "data": {
           "installed": true,
           "version": "1.0.0",
-          "installedAt": "2026-09-18T20:10:00.000Z"
+          "installedAt": "2026-09-18T20:10:00.000Z",
+          "targetVersion": "1.0.0",
+          "isMatchedVersion": true,
+          "latestVersion": "1.1.0",
+          "hasUpdate": true
         },
         "requestId": "<request-id>"
-      }
+      },
+      "note": "Query version là tùy chọn. Nếu không truyền, targetVersion và isMatchedVersion sẽ là null."
     },
     {
       "name": "Ghi nhận cài đặt app",
@@ -364,6 +371,66 @@
         "note": "Backend redirect đến link tương ứng OS. os nhận windows | macos | linux; bỏ os thì backend tự nhận diện User-Agent, không nhận diện được sẽ chọn link đầu tiên."
       },
       "note": "Nên dùng window.location.href = url download thay vì fetch/axios để browser theo redirect và tải file."
+    },
+    {
+      "name": "[Admin] Tổng quan analytics theo version",
+      "method": "GET",
+      "path": "/analytics/overview?version=1.0.0",
+      "requiresAuth": true,
+      "requiresRole": "ADMIN",
+      "responseExample": {
+        "success": true,
+        "message": "Success",
+        "data": {
+          "totalInstallations": 1250,
+          "installationsToday": 45,
+          "installationsThisWeek": 210,
+          "installationsThisMonth": 680,
+          "totalWatermarks": 8400,
+          "watermarksToday": 320,
+          "filterVersion": "1.0.0",
+          "installationsByVersion": [{ "version": "1.0.0", "count": 900 }],
+          "watermarksByVersion": [{ "version": "1.0.0", "count": 6400 }]
+        },
+        "requestId": "<request-id>"
+      },
+      "note": "Query version là tùy chọn; bỏ query để lấy tổng quan tất cả phiên bản."
+    },
+    {
+      "name": "[Admin] Analytics watermark theo ngày/version",
+      "method": "GET",
+      "path": "/analytics/watermarks?startDate=2026-09-01&endDate=2026-09-30&type=WATERMARK_GGFLOW&version=1.0.0",
+      "requiresAuth": true,
+      "requiresRole": "ADMIN",
+      "responseExample": {
+        "success": true,
+        "message": "Success",
+        "data": {
+          "totalCount": 156,
+          "stats": [{ "date": "2026-09-18", "count": 28 }],
+          "byVersion": [{ "version": "1.0.0", "count": 120 }]
+        },
+        "requestId": "<request-id>"
+      },
+      "note": "Tất cả query đều tùy chọn: startDate, endDate (YYYY-MM-DD), type, version."
+    },
+    {
+      "name": "[Admin] Analytics installation theo kỳ/version",
+      "method": "GET",
+      "path": "/analytics/installations?period=daily&startDate=2026-09-01&endDate=2026-09-30&version=1.0.0",
+      "requiresAuth": true,
+      "requiresRole": "ADMIN",
+      "responseExample": {
+        "success": true,
+        "message": "Success",
+        "data": {
+          "totalInstallations": 1250,
+          "period": "daily",
+          "stats": [{ "date": "2026-09-18", "count": 45 }]
+        },
+        "requestId": "<request-id>"
+      },
+      "note": "period nhận daily | weekly | monthly; mặc định daily. startDate, endDate, version đều tùy chọn."
     }
   ],
   "commonErrorResponse": {

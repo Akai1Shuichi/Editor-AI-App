@@ -12,13 +12,13 @@ import uuid
 import requests
 from PyQt6.QtCore import QThread
 
-from app.updater import load_api_base_url, load_app_version
+from app.updater import load_api_base_url, load_app_version, load_telemetry_debug
 
 
 WATERMARK_TYPE = "WATERMARK_GGFLOW"
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.DEBUG if load_telemetry_debug() else logging.WARNING,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
