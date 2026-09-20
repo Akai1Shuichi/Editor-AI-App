@@ -63,5 +63,6 @@ $RECYCLE.BIN/
 documents/vibi
 tests/*
 !tests/test_phase1_release.py
+!tests/test_updater.py
 build/
 dist/

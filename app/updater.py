@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 from PyQt6.QtCore import QThread, QUrl, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
+    QApplication,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -27,6 +28,8 @@ from PyQt6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
 )
+
+from app.update_installer import start_update_handoff
 
 
 DEFAULT_CONFIG = {
@@ -255,19 +258,19 @@ class UpdateDialog(QDialog):
     def _download_finished(self, archive: str) -> None:
         try:
             package = Path(archive)
-            if package.suffix.lower() == ".zip":
-                launch_target = self._extract_archive(package)
-            else:
-                launch_target = package
+            if package.suffix.lower() != ".zip":
+                raise OSError("Gói cập nhật phải là tệp ZIP.")
+            staging_directory = self._extract_archive(package)
+            start_update_handoff(staging_directory)
         except (OSError, zipfile.BadZipFile) as error:
             self._download_failed(f"Không thể giải nén bản cập nhật: {error}")
             return
-        QMessageBox.information(self, "Đã tải cập nhật", "Bản cập nhật đã sẵn sàng. Ứng dụng mới sẽ được mở ngay bây giờ.")
-        if launch_target.is_dir():
-            self._launch_update(launch_target)
-        else:
-            self._launch_file(launch_target)
+        self.progress.setFormat("Đang cài đặt bản cập nhật…")
+        self.cancel_button.setEnabled(False)
         self.accept()
+        application = QApplication.instance()
+        if application:
+            application.quit()
 
     @staticmethod
     def _extract_archive(archive: Path) -> Path:
