@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.update_installer import start_update_handoff
+from app.update_download import update_package_filename
 
 
 DEFAULT_CONFIG = {
@@ -171,9 +172,7 @@ class UpdateDownloaderThread(QThread):
     def __init__(self, download_url: str, file_name: str, parent=None):
         super().__init__(parent)
         self.download_url = download_url
-        os_name, _ = current_os()
-        default_suffix = {"windows": ".exe", "macos": ".dmg", "linux": ".zip"}.get(os_name, ".zip")
-        self.file_name = Path(file_name).name or f"EditorVideoAI-update{default_suffix}"
+        self.file_name = Path(file_name).name or "EditorVideoAI-update.zip"
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -185,8 +184,10 @@ class UpdateDownloaderThread(QThread):
             destination.mkdir(parents=True, exist_ok=True)
             request = urllib.request.Request(self.download_url, headers={"User-Agent": "EditorVideoAI-Updater"})
             with urllib.request.urlopen(request, timeout=30) as response:
-                downloaded_name = Path(response.geturl().split("?", 1)[0]).name
-                target = destination / (downloaded_name or self.file_name)
+                downloaded_name = update_package_filename(
+                    response.geturl(), response.headers.get("Content-Disposition"), self.file_name
+                )
+                target = destination / downloaded_name
                 with target.open("wb") as stream:
                     total = int(response.headers.get("Content-Length", 0))
                     received = 0

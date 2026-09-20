@@ -4,10 +4,21 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from app.update_download import update_package_filename
 from app.update_installer import create_update_helper, start_update_handoff
 
 
 class InPlaceUpdateHelperTests(unittest.TestCase):
+    def test_download_endpoint_without_zip_name_uses_zip_fallback(self):
+        """Catches a redirected /update/download URL being saved as extensionless 'download'."""
+        filename = update_package_filename(
+            "http://localhost:3000/api/v1/update/download?code=s-editor&versionName=1.1&os=windows",
+            None,
+            "EditorVideoAI-update.zip",
+        )
+
+        self.assertEqual(filename, "EditorVideoAI-update.zip")
+
     def test_handoff_starts_detached_helper_for_the_running_packaged_app(self):
         """Catches the UI closing without a replacement helper being started."""
         with tempfile.TemporaryDirectory() as temporary:
