@@ -125,7 +125,7 @@ class MainWindow(QMainWindow):
             layout.addSpacing(18)
 
         layout.addStretch()
-        self.footer_creator = QLabel("© Created by: trtoan")
+        self.footer_creator = QLabel("© Created by: botocIT")
         self.footer_creator.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
         layout.addWidget(self.footer_creator)
         return footer
