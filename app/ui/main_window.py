@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from app import config
 from app.core.standalone_state import StandaloneStateStore
+from app.core.telemetry import TelemetryThread
 from app.ui.watermark_tab import WatermarkTab
 from app.updater import APP_VERSION, UpdateCheckerThread, UpdateDialog
 
@@ -34,7 +35,12 @@ class MainWindow(QMainWindow):
         self.standalone_state = StandaloneStateStore()
         self.available_update_info: dict | None = None
         self.init_ui()
+        QTimer.singleShot(0, self._record_installation)
         QTimer.singleShot(1500, self._check_update_automatically)
+
+    def _record_installation(self) -> None:
+        self._installation_telemetry = TelemetryThread("installation", self)
+        self._installation_telemetry.start()
 
     def init_ui(self):
         central_widget = QWidget()

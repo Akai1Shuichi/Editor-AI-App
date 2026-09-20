@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app.core.watermark_remover import GeminiWatermarkRemover
+from app.core.telemetry import TelemetryThread, should_record_watermark
 from app.core.platform_utils import open_path
 from app.core.standalone_state import (
     StandaloneStateStore,
@@ -134,6 +135,7 @@ class WatermarkTab(QWidget):
         self.selected_files: List[Path] = []
         self.output_dir: Optional[Path] = None
         self.worker: Optional[WatermarkWorker] = None
+        self._telemetry_threads: List[TelemetryThread] = []
         self.project = None
         self.standalone_store: Optional[StandaloneStateStore] = None
         self.current_run_dir: Optional[Path] = None
@@ -694,6 +696,16 @@ class WatermarkTab(QWidget):
                 self.edit_output_name.setText(build_output_folder_name("clean"))
         self._save_standalone_state()
         self.images_updated.emit()
+        if should_record_watermark(
+            success_count=success_count,
+            cancelled=bool(self.worker and self.worker._is_cancelled),
+        ):
+            telemetry_thread = TelemetryThread("watermark", self)
+            self._telemetry_threads.append(telemetry_thread)
+            telemetry_thread.finished.connect(
+                lambda: self._telemetry_threads.remove(telemetry_thread)
+            )
+            telemetry_thread.start()
 
     def cancel_processing(self):
         if self.worker and self.worker.isRunning():
