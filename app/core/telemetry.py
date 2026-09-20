@@ -6,7 +6,7 @@ import hashlib
 import logging
 import platform
 from typing import Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 import uuid
 
 import requests
@@ -72,7 +72,8 @@ class TelemetryClient:
         try:
             response = api_request(
                 "GET",
-                f"{self.api_base_url}/installations/check/{quote(current_device_id, safe='')}",
+                f"{self.api_base_url}/installations/check/{quote(current_device_id, safe='')}?"
+                f"{urlencode({'version': version})}",
                 session=self.session,
                 timeout=5,
             )
@@ -93,13 +94,17 @@ class TelemetryClient:
         except (requests.RequestException, ValueError, AttributeError):
             return False
 
-    def record_watermark(self, current_device_id: str) -> bool:
+    def record_watermark(self, current_device_id: str, version: str) -> bool:
         try:
             response = api_request(
                 "POST",
                 f"{self.api_base_url}/watermarks",
                 session=self.session,
-                json={"device_id": current_device_id, "type": WATERMARK_TYPE},
+                json={
+                    "device_id": current_device_id,
+                    "type": WATERMARK_TYPE,
+                    "version": version,
+                },
                 timeout=5,
             )
             response.raise_for_status()
@@ -121,4 +126,4 @@ class TelemetryThread(QThread):
         if self.event == "installation":
             client.ensure_installation(current_device_id, load_app_version())
         elif self.event == "watermark":
-            client.record_watermark(current_device_id)
+            client.record_watermark(current_device_id, load_app_version())
