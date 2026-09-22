@@ -14,6 +14,14 @@
    - **Quản Lý Danh Sách Dự Án (Project List)**: Xem danh sách tất cả dự án, số lượng ảnh sạch, voice, video đã xuất và kích hoạt chuyển đổi nhanh.
 2. **⚙️ Cài Đặt & Quản Lý Tài Khoản Vibi**: Nhập và lưu API Key an toàn vào `.env`, kiểm tra số dư Credits và thông tin tài khoản theo thời gian thực.
 
+### Gỡ watermark Video
+
+Tab **Gỡ watermark Video** nhận file MP4, MOV, MKV hoặc WebM. Ứng dụng xử lý
+từng frame ngay trên máy bằng cùng thuật toán inverse-alpha đang dùng cho ảnh
+(`gain=0.6`), làm mượt nhẹ đường biên ROI và xuất MP4 H.264 (`yuv420p`). Ứng
+dụng **không tải video** lên máy chủ; audio nguồn được giữ lại khi tương thích
+với MP4. FFmpeg (qua `imageio-ffmpeg` hoặc bản cài trong `PATH`) là bắt buộc.
+
 ---
 
 ## 🚀 Hướng dẫn Khởi chạy Ứng dụng

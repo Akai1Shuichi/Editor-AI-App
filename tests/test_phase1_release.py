@@ -73,9 +73,9 @@ class Phase1ReleaseTests(unittest.TestCase):
             "Phase-1 must not import modules scheduled for later releases.",
         )
 
-    def test_packaging_does_not_bundle_video_runtime(self):
+    def test_packaging_bundles_video_runtime(self):
         spec = (ROOT / "editor_video_app.spec").read_text()
-        self.assertNotIn("imageio_ffmpeg", spec)
+        self.assertIn("imageio_ffmpeg", spec)
 
 
 if __name__ == "__main__":

@@ -64,5 +64,8 @@ documents/vibi
 tests/*
 !tests/test_phase1_release.py
 !tests/test_updater.py
+!tests/test_watermark_remover.py
+!tests/test_video_watermark_remover.py
+!tests/test_video_watermark_ui.py
 build/
 dist/

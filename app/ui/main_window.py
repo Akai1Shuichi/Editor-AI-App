@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -17,6 +18,7 @@ from app import config
 from app.core.standalone_state import StandaloneStateStore
 from app.core.telemetry import TelemetryThread
 from app.ui.watermark_tab import WatermarkTab
+from app.ui.video_watermark_tab import VideoWatermarkTab
 from app.updater import APP_VERSION, UpdateCheckerThread, UpdateDialog
 
 
@@ -53,11 +55,15 @@ class MainWindow(QMainWindow):
         root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_update_bar())
+        self.watermark_pages = QTabWidget()
         self.watermark_tab = WatermarkTab()
         self.watermark_tab.configure_standalone(
             self.standalone_state, config.WATERMARK_DOWNLOADS_DIR
         )
-        root_layout.addWidget(self.watermark_tab, stretch=1)
+        self.video_watermark_tab = VideoWatermarkTab()
+        self.watermark_pages.addTab(self.watermark_tab, "Gỡ watermark Ảnh")
+        self.watermark_pages.addTab(self.video_watermark_tab, "Gỡ watermark Video")
+        root_layout.addWidget(self.watermark_pages, stretch=1)
         root_layout.addWidget(self._build_footer())
 
     def _build_update_bar(self) -> QFrame:
