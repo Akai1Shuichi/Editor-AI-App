@@ -11,9 +11,12 @@ LEGACY_TTS_DOWNLOADS_DIR = DOWNLOADS_DIR / "tts"
 
 USER_DOWNLOADS_DIR = Path.home() / "Downloads"
 USER_DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
-WATERMARK_DOWNLOADS_DIR = USER_DOWNLOADS_DIR / "watermark"
+LEGACY_USER_WATERMARK_DOWNLOADS_DIR = USER_DOWNLOADS_DIR / "watermark"
+WATERMARK_DOWNLOADS_DIR = USER_DOWNLOADS_DIR / "image_watermark"
+VIDEO_WATERMARK_DOWNLOADS_DIR = USER_DOWNLOADS_DIR / "video_watermark"
 TTS_DOWNLOADS_DIR = USER_DOWNLOADS_DIR / "tts"
 WATERMARK_DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+VIDEO_WATERMARK_DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 TTS_DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 SETTINGS = QSettings("AI Studio", "AI Media Studio")

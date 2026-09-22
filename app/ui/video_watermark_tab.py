@@ -1,233 +1,302 @@
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from PyQt6.QtCore import QThread, Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
-    QFileDialog,
-    QFrame,
-    QHBoxLayout,
-    QLabel,
-    QMessageBox,
-    QPushButton,
-    QProgressBar,
-    QSlider,
-    QVBoxLayout,
-    QWidget,
+    QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
+    QProgressBar, QTableWidget, QTableWidgetItem, QHeaderView,
+    QSizePolicy, QVBoxLayout, QWidget,
 )
 
 from app.core.platform_utils import open_path
+from app.core.standalone_state import build_output_folder_name, resolve_new_output_folder
+from app import config
 from app.core.video_watermark_remover import VideoWatermarkRemover
 
 
 class VideoWatermarkWorker(QThread):
-    progress_updated = pyqtSignal(int, str)
-    processing_finished = pyqtSignal(bool, str, str)
+    """Sequential batch worker; the video engine remains independent of images."""
+    file_processed = pyqtSignal(int, int, str, bool, str)
+    finished_all = pyqtSignal(int, int)
 
-    def __init__(self, source: Path, output: Path, gain: float, scale: float, offset_x: int, offset_y: int, parent=None):
+    def __init__(self, files: List[Path], output_dir: Path, parent=None):
         super().__init__(parent)
-        self.source = source
-        self.output = output
+        self.files, self.output_dir = files, output_dir
         self._cancelled = False
-        self.gain, self.scale, self.offset_x, self.offset_y = gain, scale, offset_x, offset_y
 
     def cancel(self) -> None:
         self._cancelled = True
 
     def run(self) -> None:
+        total, success_count = len(self.files), 0
         try:
-            def report(current: int, total: Optional[int]) -> None:
-                percent = int(current * 100 / total) if total else 0
-                self.progress_updated.emit(min(99, percent), f"Đang xử lý frame {current}/{total or '?'}…")
-
-            result = VideoWatermarkRemover().process_file(
-                self.source,
-                self.output,
-                gain=self.gain, scale=self.scale, offset_x=self.offset_x, offset_y=self.offset_y,
-                progress_callback=report,
-                is_cancelled=lambda: self._cancelled,
-            )
-            self.processing_finished.emit(
-                bool(result.get("success")),
-                str(result.get("output_path", self.output)),
-                str(result.get("error", "Đã hủy xử lý." if result.get("cancelled") else "")),
-            )
-        except Exception as exc:
-            self.processing_finished.emit(False, str(self.output), str(exc))
+            remover = VideoWatermarkRemover()
+            for current, source in enumerate(self.files, 1):
+                if self._cancelled:
+                    break
+                output = self.output_dir / f"{source.stem}_cleaned.mp4"
+                try:
+                    result = remover.process_file(
+                        source, output,
+                        is_cancelled=lambda: self._cancelled,
+                    )
+                    success = bool(result.get("success"))
+                    detail = str(result.get("output_path") if success else result.get("error", "Lỗi xử lý video"))
+                    success_count += int(success)
+                    self.file_processed.emit(current, total, source.name, success, detail)
+                except Exception as exc:
+                    self.file_processed.emit(current, total, source.name, False, str(exc))
+        finally:
+            self.finished_all.emit(total, success_count)
 
 
 class VideoWatermarkTab(QWidget):
-    """A local video counterpart to the existing image watermark workspace."""
-
+    """Batch video removal UI, deliberately aligned with the image workflow."""
     video_filter = "Video (*.mp4 *.mov *.mkv *.webm)"
+    video_extensions = {".mp4", ".mov", ".mkv", ".webm"}
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.source_path: Optional[Path] = None
-        self.output_path: Optional[Path] = None
+        self.setObjectName("watermark_tab")
+        self.selected_files: List[Path] = []
+        self.output_dir: Optional[Path] = config.VIDEO_WATERMARK_DOWNLOADS_DIR
+        self.current_run_dir: Optional[Path] = None
         self.worker: Optional[VideoWatermarkWorker] = None
         self._build_ui()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(14)
-
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
         title = QLabel("Gỡ watermark Video")
-        title.setStyleSheet("font-size: 20px; font-weight: 700; color: #f8fafc;")
+        title.setObjectName("tool_title")
         layout.addWidget(title)
-        description = QLabel(
-            "Xử lý cục bộ từng frame bằng cùng thuật toán unblending của ảnh. "
-            "Video không được tải lên máy chủ."
-        )
-        description.setWordWrap(True)
-        description.setStyleSheet("color: #94a3b8; font-size: 12px;")
-        layout.addWidget(description)
+        notice = QLabel("Lưu ý: Gỡ watermark video hiện chỉ hỗ trợ cho video 720p.")
+        notice.setWordWrap(True)
+        notice.setStyleSheet("color: #facc15; font-size: 12px;")
+        layout.addWidget(notice)
 
         card = QFrame()
         card.setObjectName("watermark_controls")
         card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(18, 18, 18, 18)
-        card_layout.setSpacing(12)
-
-        self.source_label = QLabel("Chưa chọn video")
-        self.source_label.setWordWrap(True)
-        self.output_label = QLabel("Kết quả sẽ lưu cạnh video gốc")
-        self.output_label.setWordWrap(True)
-        for label in (self.source_label, self.output_label):
-            label.setStyleSheet("color: #cbd5e1; font-size: 12px;")
-            card_layout.addWidget(label)
-
-        pick_row = QHBoxLayout()
-        self.choose_button = QPushButton("Chọn video…")
+        form = QVBoxLayout(card)
+        form.setContentsMargins(14, 14, 14, 14)
+        form.setSpacing(10)
+        file_row = QHBoxLayout()
+        self.choose_button = QPushButton("Chọn file video…")
         self.choose_button.setObjectName("btn_primary")
-        self.choose_button.clicked.connect(self.choose_video)
-        self.destination_button = QPushButton("Đổi nơi lưu…")
+        self.choose_button.clicked.connect(self.choose_files)
+        self.folder_button = QPushButton("Chọn thư mục…")
+        self.folder_button.setObjectName("btn_subtle")
+        self.folder_button.clicked.connect(self.choose_folder)
+        for button in (self.choose_button, self.folder_button):
+            file_row.addWidget(button)
+        file_row.addStretch()
+        form.addLayout(file_row)
+
+        list_header = QHBoxLayout()
+        list_title = QLabel("Danh sách video")
+        list_title.setProperty("class", "section_label")
+        self.file_count = QLabel("0 video")
+        self.file_count.setObjectName("meta_label")
+        self.remove_button = QPushButton("Xóa hàng đã chọn")
+        self.remove_button.setObjectName("btn_subtle")
+        self.remove_button.clicked.connect(self.remove_selected)
+        self.clear_button = QPushButton("Xóa hết")
+        self.clear_button.setObjectName("btn_subtle")
+        self.clear_button.clicked.connect(self.clear_files)
+        list_header.addWidget(list_title)
+        list_header.addWidget(self.file_count)
+        list_header.addStretch()
+        list_header.addWidget(self.remove_button)
+        list_header.addWidget(self.clear_button)
+        form.addLayout(list_header)
+
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["Video", "Trạng thái", "Kết quả / lỗi"])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setMinimumHeight(220)
+        self.table.itemSelectionChanged.connect(self._update_controls)
+        form.addWidget(self.table)
+
+        name_row = QHBoxLayout()
+        name_label = QLabel("Tên thư mục kết quả:")
+        name_label.setProperty("class", "section_label")
+        name_row.addWidget(name_label)
+        self.output_name = QLineEdit(build_output_folder_name("clean_video"))
+        self.output_name.setPlaceholderText("clean_video_YYYYMMDD_HHMMSS")
+        name_row.addWidget(self.output_name, 1)
+        form.addLayout(name_row)
+
+        destination = QHBoxLayout()
+        destination.setSpacing(8)
+        location_label = QLabel("Lưu tại:")
+        location_label.setProperty("class", "section_label")
+        self.destination_path_label = QLabel(str(self.output_dir))
+        self.destination_path_label.setObjectName("output_path")
+        self.destination_path_label.setToolTip(str(self.output_dir))
+        self.destination_path_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.destination_button = QPushButton("Chọn thư mục...")
         self.destination_button.setObjectName("btn_subtle")
-        self.destination_button.setEnabled(False)
         self.destination_button.clicked.connect(self.choose_destination)
-        pick_row.addWidget(self.choose_button)
-        pick_row.addWidget(self.destination_button)
-        pick_row.addStretch()
-        card_layout.addLayout(pick_row)
-
-        self.gain_slider, self.scale_slider, self.x_slider, self.y_slider = self._add_alignment_controls(card_layout)
-
+        self.open_button = QPushButton("Mở thư mục video")
+        self.open_button.setObjectName("btn_subtle")
+        self.open_button.clicked.connect(self.open_output_directory)
+        destination.addWidget(location_label)
+        destination.addWidget(self.destination_path_label, 1)
+        destination.addWidget(self.destination_button)
+        destination.addWidget(self.open_button)
+        form.addLayout(destination)
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
-        self.progress.setValue(0)
-        card_layout.addWidget(self.progress)
-        self.status = QLabel("Sẵn sàng.")
+        form.addWidget(self.progress)
+        self.status = QLabel("Chọn video để bắt đầu.")
         self.status.setStyleSheet("color: #94a3b8; font-size: 12px;")
-        card_layout.addWidget(self.status)
-
-        action_row = QHBoxLayout()
-        self.start_button = QPushButton("Bắt đầu xử lý video")
+        form.addWidget(self.status)
+        actions = QHBoxLayout()
+        self.start_button = QPushButton("Bắt đầu xử lý danh sách")
         self.start_button.setObjectName("btn_primary")
-        self.start_button.setEnabled(False)
         self.start_button.clicked.connect(self.start_processing)
         self.cancel_button = QPushButton("Hủy")
         self.cancel_button.setObjectName("btn_danger")
-        self.cancel_button.setVisible(False)
         self.cancel_button.clicked.connect(self.cancel_processing)
-        self.open_button = QPushButton("Mở video kết quả")
-        self.open_button.setObjectName("btn_subtle")
-        self.open_button.setEnabled(False)
-        self.open_button.clicked.connect(self.open_output)
-        action_row.addWidget(self.start_button)
-        action_row.addWidget(self.cancel_button)
-        action_row.addWidget(self.open_button)
-        card_layout.addLayout(action_row)
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.setVisible(False)
+        for button in (self.start_button, self.cancel_button):
+            actions.addWidget(button)
+        actions.addStretch()
+        form.addLayout(actions)
         layout.addWidget(card)
         layout.addStretch()
+        self._update_controls()
 
-    def _add_alignment_controls(self, layout):
-        controls = (("Strength (Gain)", 10, 90, 60, 100), ("Size Scale", 50, 150, 101, 100), ("Position X", -80, 40, -24, 1), ("Position Y", -160, 40, -24, 1))
-        sliders = []
-        for title, low, high, value, divisor in controls:
-            row = QHBoxLayout(); label = QLabel(title); value_label = QLabel()
-            slider = QSlider(Qt.Orientation.Horizontal); slider.setRange(low, high); slider.setValue(value)
-            def refresh(_=0, s=slider, l=value_label, d=divisor): l.setText(f"{s.value()/d:.2f}×" if d == 100 else f"{s.value():+d}px")
-            slider.valueChanged.connect(refresh); refresh(); row.addWidget(label); row.addWidget(slider, 1); row.addWidget(value_label); layout.addLayout(row); sliders.append(slider)
-        return sliders
+    def choose_files(self) -> None:
+        files, _ = QFileDialog.getOpenFileNames(self, "Chọn video cần gỡ watermark", str(Path.home()), self.video_filter)
+        self.add_files([Path(file) for file in files])
 
-    def choose_video(self) -> None:
-        filename, _ = QFileDialog.getOpenFileName(self, "Chọn video", str(Path.home()), self.video_filter)
-        if not filename:
+    def choose_folder(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Chọn thư mục chứa video", str(Path.home()))
+        if not folder:
             return
-        self.source_path = Path(filename)
-        self.output_path = self.source_path.with_name(f"{self.source_path.stem}_cleaned.mp4")
-        # Keep the web-compatible defaults for every aspect ratio.  The core
-        # converts these offsets from the Gemini/Veo video anchor; there is no
-        # separate 9:16 correction.
-        self.gain_slider.setValue(60)
-        self.scale_slider.setValue(101)
-        self.x_slider.setValue(-24)
-        self.y_slider.setValue(-24)
-        self.source_label.setText(f"Video nguồn: {self.source_path}")
-        self.output_label.setText(f"Kết quả: {self.output_path}")
-        self.destination_button.setEnabled(True)
-        self.start_button.setEnabled(True)
-        self.open_button.setEnabled(False)
-        self.progress.setValue(0)
-        self.status.setText("Sẵn sàng xử lý.")
+        files = [path for path in sorted(Path(folder).iterdir()) if path.is_file()
+                 and path.suffix.lower() in self.video_extensions and not path.stem.endswith("_cleaned")]
+        if files:
+            self.add_files(files)
+        else:
+            QMessageBox.information(self, "Không có video", "Không tìm thấy video phù hợp trong thư mục này.")
+
+    def add_files(self, paths: List[Path]) -> None:
+        for path in paths:
+            if path in self.selected_files or not path.is_file() or path.suffix.lower() not in self.video_extensions:
+                continue
+            self.selected_files.append(path)
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+            item = QTableWidgetItem(path.name)
+            item.setToolTip(str(path))
+            self.table.setItem(row, 0, item)
+            self.table.setItem(row, 1, QTableWidgetItem("Chờ"))
+            self.table.setItem(row, 2, QTableWidgetItem("-"))
+        self.status.setText(f"Đã nạp {len(self.selected_files)} video.")
+        self._update_file_count()
+        self._update_controls()
 
     def choose_destination(self) -> None:
-        if not self.output_path:
-            return
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Lưu video đã xử lý", str(self.output_path), "MP4 Video (*.mp4)"
-        )
-        if filename:
-            self.output_path = Path(filename)
-            self.output_label.setText(f"Kết quả: {self.output_path}")
+        folder = QFileDialog.getExistingDirectory(self, "Chọn thư mục gốc lưu video kết quả", str(self.output_dir))
+        if folder:
+            self.output_dir = Path(folder)
+            self.destination_path_label.setText(str(self.output_dir))
+            self.destination_path_label.setToolTip(str(self.output_dir))
+            self._update_controls()
+
+    def remove_selected(self) -> None:
+        for row in sorted({index.row() for index in self.table.selectionModel().selectedRows()}, reverse=True):
+            self.selected_files.pop(row)
+            self.table.removeRow(row)
+        self.status.setText(f"Còn {len(self.selected_files)} video.")
+        self._update_file_count()
+        self._update_controls()
+
+    def clear_files(self) -> None:
+        self.selected_files.clear()
+        self.table.setRowCount(0)
+        self.progress.setValue(0)
+        self.status.setText("Danh sách trống.")
+        self._update_file_count()
+        self._update_controls()
+
+    def _update_file_count(self) -> None:
+        self.file_count.setText(f"{len(self.selected_files)} video")
+
+    def _output_directory(self) -> Path:
+        return self.current_run_dir or self.output_dir or config.VIDEO_WATERMARK_DOWNLOADS_DIR
 
     def _set_running(self, running: bool) -> None:
-        self.choose_button.setEnabled(not running)
-        self.destination_button.setEnabled(not running and self.output_path is not None)
+        for widget in (self.choose_button, self.folder_button, self.remove_button, self.clear_button,
+                       self.destination_button, self.output_name, self.table):
+            widget.setEnabled(not running)
         self.start_button.setVisible(not running)
-        self.start_button.setEnabled(not running and self.source_path is not None)
+        self.start_button.setEnabled(not running and bool(self.selected_files))
         self.cancel_button.setVisible(running)
         self.cancel_button.setEnabled(running)
+        self.open_button.setEnabled(not running and self._output_directory().is_dir())
+
+    def _update_controls(self) -> None:
+        if not self.worker or not self.worker.isRunning():
+            self.start_button.setEnabled(bool(self.selected_files))
+            self.remove_button.setEnabled(bool(self.table.selectionModel().selectedRows()))
+            self.clear_button.setEnabled(bool(self.selected_files))
+            self.open_button.setEnabled(self._output_directory().is_dir())
 
     def start_processing(self) -> None:
-        if not self.source_path or not self.output_path:
+        if not self.selected_files:
+            QMessageBox.warning(self, "Chưa có video", "Vui lòng chọn ít nhất một video.")
             return
-        if self.output_path.exists():
-            QMessageBox.warning(self, "File đã tồn tại", "Hãy chọn tên file kết quả khác để tránh ghi đè.")
+        output_root = self.output_dir or config.VIDEO_WATERMARK_DOWNLOADS_DIR
+        try:
+            self.current_run_dir = resolve_new_output_folder(output_root, self.output_name.text())
+            self.current_run_dir.mkdir(parents=True)
+        except (ValueError, OSError) as exc:
+            QMessageBox.warning(self, "Không thể tạo thư mục kết quả", str(exc))
             return
         self.progress.setValue(0)
-        self.status.setText("Đang khởi tạo FFmpeg…")
+        self.status.setText("Đang chuẩn bị xử lý video…")
         self._set_running(True)
-        self.worker = VideoWatermarkWorker(self.source_path, self.output_path, self.gain_slider.value()/100, self.scale_slider.value()/100, self.x_slider.value(), self.y_slider.value(), self)
-        self.worker.progress_updated.connect(self.on_progress)
-        self.worker.processing_finished.connect(self.on_finished)
+        self.worker = VideoWatermarkWorker(self.selected_files, self.current_run_dir, self)
+        self.worker.file_processed.connect(self.on_file_processed)
+        self.worker.finished_all.connect(self.on_finished_all)
         self.worker.start()
 
-    def on_progress(self, percent: int, message: str) -> None:
-        self.progress.setValue(percent)
-        self.status.setText(message)
+    def on_file_processed(self, current: int, total: int, name: str, success: bool, detail: str) -> None:
+        self.progress.setValue(int(current * 100 / total))
+        state = QTableWidgetItem("✓ Xong" if success else "✗ Lỗi")
+        state.setForeground(QColor("#34d399" if success else "#f87171"))
+        self.table.setItem(current - 1, 1, state)
+        item = QTableWidgetItem(detail)
+        item.setToolTip(detail)
+        self.table.setItem(current - 1, 2, item)
+        self.status.setText(f"Đang xử lý ({current}/{total}): {name}")
 
-    def on_finished(self, success: bool, output: str, error: str) -> None:
+    def on_finished_all(self, total: int, success_count: int) -> None:
         self._set_running(False)
-        if success:
-            self.progress.setValue(100)
-            self.output_path = Path(output)
-            self.status.setText("Hoàn tất gỡ watermark video.")
-            self.open_button.setEnabled(True)
-        else:
-            self.status.setText(f"Không thể xử lý video: {error}")
-            QMessageBox.warning(self, "Gỡ watermark Video", error)
+        self.status.setText(f"Hoàn tất: {success_count}/{total} video.")
+        self.output_name.setText(build_output_folder_name("clean_video"))
 
     def cancel_processing(self) -> None:
         if self.worker and self.worker.isRunning():
             self.worker.cancel()
             self.cancel_button.setEnabled(False)
-            self.status.setText("Đang dừng…")
+            self.status.setText("Đang dừng sau video hiện tại…")
 
-    def open_output(self) -> None:
-        if self.output_path and self.output_path.is_file():
-            try:
-                open_path(self.output_path)
-            except OSError as exc:
-                QMessageBox.warning(self, "Không thể mở video", str(exc))
+    def open_output_directory(self) -> None:
+        try:
+            open_path(self._output_directory())
+        except OSError as exc:
+            QMessageBox.warning(self, "Không thể mở thư mục", str(exc))

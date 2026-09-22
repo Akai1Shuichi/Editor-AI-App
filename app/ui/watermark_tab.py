@@ -157,7 +157,10 @@ class WatermarkTab(QWidget):
 
         state = store.load_watermark()
         saved_output = state.get("output_dir")
-        if saved_output == config.LEGACY_WATERMARK_DOWNLOADS_DIR:
+        if saved_output in {
+            config.LEGACY_WATERMARK_DOWNLOADS_DIR,
+            config.LEGACY_USER_WATERMARK_DOWNLOADS_DIR,
+        }:
             saved_output = None
         restored_output = saved_output or Path(output_dir)
         restored_output.mkdir(parents=True, exist_ok=True)
@@ -421,6 +424,7 @@ class WatermarkTab(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
         left_layout.addWidget(self.progress_bar)
 
         self.status_lbl = QLabel("Sẵn sàng.")
@@ -640,6 +644,7 @@ class WatermarkTab(QWidget):
         self.btn_cancel.setVisible(True)
         self.set_file_list_controls_enabled(False)
         self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
         self.status_lbl.setText("Đang chuẩn bị...")
 
         self.worker = WatermarkWorker(
@@ -673,6 +678,7 @@ class WatermarkTab(QWidget):
         self.btn_start.setVisible(True)
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.setVisible(False)
+        self.progress_bar.setTextVisible(False)
         self.set_file_list_controls_enabled(True)
         if self.standalone_store:
             self.edit_output_name.setEnabled(True)
