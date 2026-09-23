@@ -105,7 +105,7 @@ class MainWindow(QMainWindow):
         for icon_name, text, url in (
             (
                 "zalo.svg",
-                "Hỗ trợ tại Zalo",
+                "Nhóm Zalo",
                 "https://zalo.me/g/2h4r4fbobrg66e9haa3q",
             ),
         ):
