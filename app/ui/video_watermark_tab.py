@@ -56,6 +56,7 @@ class VideoWatermarkTab(QWidget):
     """Batch video removal UI, deliberately aligned with the image workflow."""
     video_filter = "Video (*.mp4 *.mov *.mkv *.webm)"
     video_extensions = {".mp4", ".mov", ".mkv", ".webm"}
+    mode_setting_key = "VIDEO_WATERMARK_MODE"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -89,6 +90,12 @@ class VideoWatermarkTab(QWidget):
         self.mode_choice = QComboBox()
         self.mode_choice.addItem("Omini", "gemini")
         self.mode_choice.addItem("Veo 3", "veo3")
+        saved_mode = str(config.SETTINGS.value(self.mode_setting_key, "veo3"))
+        saved_index = self.mode_choice.findData(saved_mode)
+        self.mode_choice.setCurrentIndex(saved_index if saved_index >= 0 else 1)
+        self.mode_choice.currentIndexChanged.connect(
+            lambda _: config.save_setting(self.mode_setting_key, self.mode_choice.currentData())
+        )
         mode_row.addWidget(self.mode_choice)
         mode_row.addStretch()
         form.addLayout(mode_row)
