@@ -4,7 +4,7 @@ from typing import List, Optional
 from PyQt6.QtCore import QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
-    QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
+    QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QProgressBar, QTableWidget, QTableWidgetItem, QHeaderView,
     QSizePolicy, QVBoxLayout, QWidget,
 )
@@ -20,9 +20,9 @@ class VideoWatermarkWorker(QThread):
     file_processed = pyqtSignal(int, int, str, bool, str)
     finished_all = pyqtSignal(int, int)
 
-    def __init__(self, files: List[Path], output_dir: Path, parent=None):
+    def __init__(self, files: List[Path], output_dir: Path, mode: str = "veo3", parent=None):
         super().__init__(parent)
-        self.files, self.output_dir = files, output_dir
+        self.files, self.output_dir, self.mode = files, output_dir, mode
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -39,6 +39,7 @@ class VideoWatermarkWorker(QThread):
                 try:
                     result = remover.process_file(
                         source, output,
+                        mode=self.mode,
                         is_cancelled=lambda: self._cancelled,
                     )
                     success = bool(result.get("success"))
@@ -72,7 +73,7 @@ class VideoWatermarkTab(QWidget):
         title = QLabel("Gỡ watermark Video")
         title.setObjectName("tool_title")
         layout.addWidget(title)
-        notice = QLabel("Lưu ý: Gỡ watermark video hiện chỉ hỗ trợ cho video 720p.")
+        notice = QLabel("Veo 3 đã kiểm tra với video 720p ngang và dọc. Độ phân giải khác có thể cần chỉnh vị trí logo.")
         notice.setWordWrap(True)
         notice.setStyleSheet("color: #facc15; font-size: 12px;")
         layout.addWidget(notice)
@@ -83,6 +84,14 @@ class VideoWatermarkTab(QWidget):
         form = QVBoxLayout(card)
         form.setContentsMargins(14, 14, 14, 14)
         form.setSpacing(10)
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(QLabel("Loại watermark:"))
+        self.mode_choice = QComboBox()
+        self.mode_choice.addItem("Veo 3 (chữ Veo)", "veo3")
+        self.mode_choice.addItem("Gemini (ngôi sao)", "gemini")
+        mode_row.addWidget(self.mode_choice)
+        mode_row.addStretch()
+        form.addLayout(mode_row)
         file_row = QHBoxLayout()
         self.choose_button = QPushButton("Chọn file video…")
         self.choose_button.setObjectName("btn_primary")
@@ -240,6 +249,7 @@ class VideoWatermarkTab(QWidget):
 
     def _set_running(self, running: bool) -> None:
         for widget in (self.choose_button, self.folder_button, self.remove_button, self.clear_button,
+                       self.mode_choice,
                        self.destination_button, self.output_name, self.table):
             widget.setEnabled(not running)
         self.start_button.setVisible(not running)
@@ -269,7 +279,10 @@ class VideoWatermarkTab(QWidget):
         self.progress.setValue(0)
         self.status.setText("Đang chuẩn bị xử lý video…")
         self._set_running(True)
-        self.worker = VideoWatermarkWorker(self.selected_files, self.current_run_dir, self)
+        self.worker = VideoWatermarkWorker(
+            self.selected_files, self.current_run_dir,
+            mode=self.mode_choice.currentData(), parent=self,
+        )
         self.worker.file_processed.connect(self.on_file_processed)
         self.worker.finished_all.connect(self.on_finished_all)
         self.worker.start()

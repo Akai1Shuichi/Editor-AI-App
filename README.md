@@ -16,10 +16,12 @@
 
 ### Gỡ watermark Video
 
-Tab **Gỡ watermark Video** nhận file MP4, MOV, MKV hoặc WebM. Ứng dụng xử lý
-từng frame ngay trên máy bằng cùng thuật toán inverse-alpha đang dùng cho ảnh
-(`gain=0.6`), làm mượt nhẹ đường biên ROI và xuất MP4 H.264 (`yuv420p`). Ứng
-dụng **không tải video** lên máy chủ; audio nguồn được giữ lại khi tương thích
+Tab **Gỡ watermark Video** nhận file MP4, MOV, MKV hoặc WebM. Chọn **Veo 3
+(chữ Veo)** để gỡ chữ nhỏ ở góc dưới phải bằng mask `veo3_text_720.png`
+và phép inverse-alpha (đã kiểm tra trên video 720p ngang và dọc), hoặc
+**Gemini (ngôi sao)** để dùng mask `bg_96.png` với cùng phép toán (`gain=0.6`).
+Ứng dụng xử lý ngay trên máy và xuất MP4 H.264
+(`yuv420p`). Ứng dụng **không tải video** lên máy chủ; audio nguồn được giữ lại khi tương thích
 với MP4. FFmpeg (qua `imageio-ffmpeg` hoặc bản cài trong `PATH`) là bắt buộc.
 
 ---

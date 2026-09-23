@@ -43,6 +43,21 @@ def get_veo_video_watermark_info(width: int, height: int) -> Dict[str, int]:
     }
 
 
+def get_veo3_text_box(width: int, height: int) -> Dict[str, int]:
+    """Small bottom-right Veo wordmark seen in 720p landscape and portrait exports."""
+    factor = min(width, height) / 720.0
+    box_width = max(8, round(34 * factor))
+    box_height = max(8, round(15 * factor))
+    right_margin = max(1, round(16 * factor))
+    bottom_margin = max(1, round(16 * factor))
+    return {
+        "x": max(0, width - right_margin - box_width),
+        "y": max(0, height - bottom_margin - box_height),
+        "width": min(box_width, width - 1),
+        "height": min(box_height, height - 1),
+    }
+
+
 def resolve_video_box(
     anchor: Dict[str, int], width: int, height: int,
     scale: float, offset_x: int, offset_y: int,
@@ -105,6 +120,10 @@ class VideoWatermarkRemover:
         if not mask_path.is_file():
             raise RuntimeError(f"Không tìm thấy mask watermark video: {mask_path}")
         self.video_mask = Image.open(mask_path).convert("RGBA")
+        veo_mask_path = mask_path.with_name("veo3_text_720.png")
+        if not veo_mask_path.is_file():
+            raise RuntimeError(f"Không tìm thấy mask watermark Veo 3: {veo_mask_path}")
+        self.veo3_mask = Image.open(veo_mask_path).convert("RGBA")
 
     def remove_frame(
         self, frame: np.ndarray, gain: float = 0.6, scale: float = 1.01,
@@ -137,6 +156,24 @@ class VideoWatermarkRemover:
         )
         return result, {"box": box}
 
+    def remove_veo3_frame(self, frame: np.ndarray) -> tuple[np.ndarray, Dict[str, Any]]:
+        """Reverse the semi-transparent white Veo wordmark without blurring its box."""
+        if frame.ndim != 3 or frame.shape[2] != 3 or frame.dtype != np.uint8:
+            raise ValueError("Frame phải là mảng RGB uint8 có dạng (height, width, 3).")
+
+        height, width, _ = frame.shape
+        box = get_veo3_text_box(width, height)
+        x, y, box_width, box_height = box["x"], box["y"], box["width"], box["height"]
+        alpha = np.asarray(
+            self.veo3_mask.resize((box_width, box_height), Image.Resampling.BICUBIC).getchannel("A"),
+            dtype=np.float32,
+        ) / 255.0
+        crop = frame[y:y + box_height, x:x + box_width].astype(np.float32)
+        restored = (crop - 255.0 * alpha[:, :, None]) / (1.0 - alpha[:, :, None])
+        result = frame.copy()
+        result[y:y + box_height, x:x + box_width] = np.clip(restored + 0.5, 0, 255).astype(np.uint8)
+        return result, {"box": box}
+
     def _ffprobe_path(self) -> str:
         ffmpeg = Path(self.ffmpeg_path)
         sibling = ffmpeg.with_name("ffprobe" + ffmpeg.suffix)
@@ -148,8 +185,23 @@ class VideoWatermarkRemover:
         raise RuntimeError("Không tìm thấy ffprobe để đọc thông tin video.")
 
     def probe(self, input_path: Path) -> VideoInfo:
+        try:
+            ffprobe_path = self._ffprobe_path()
+        except RuntimeError:
+            # imageio-ffmpeg bundles ffmpeg on Windows, but not ffprobe.
+            import imageio_ffmpeg
+
+            reader = imageio_ffmpeg.read_frames(str(input_path))
+            try:
+                metadata = next(reader)
+            finally:
+                reader.close()
+            width, height = metadata["size"]
+            fps = float(metadata["fps"])
+            duration = metadata.get("duration")
+            return VideoInfo(width, height, fps, float(duration) if duration else None)
         command = [
-            self._ffprobe_path(), "-v", "error", "-select_streams", "v:0",
+            ffprobe_path, "-v", "error", "-select_streams", "v:0",
             "-show_entries", "stream=width,height,avg_frame_rate,duration",
             "-of", "json", str(input_path),
         ]
@@ -182,6 +234,9 @@ class VideoWatermarkRemover:
             self.ffmpeg_path, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
             "-s", f"{width}x{height}", "-r", f"{fps:.12g}", "-i", "-", "-i", str(source),
             "-map", "0:v:0", "-map", "1:a?", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            # Keep untouched regions close to the source without excessive encode cost.
+            # FFmpeg's default x264 CRF 23 visibly damages untouched regions.
+            "-preset", "medium", "-crf", "16",
             "-c:a", "copy", "-movflags", "+faststart", str(output),
         ]
 
@@ -220,6 +275,7 @@ class VideoWatermarkRemover:
         offset_x: int = -24,
         offset_y: int = -24,
         preset_mode: str = "auto",
+        mode: str = "gemini",
         progress_callback: Optional[ProgressCallback] = None,
         is_cancelled: Optional[CancelCallback] = None,
     ) -> Dict[str, Any]:
@@ -232,6 +288,8 @@ class VideoWatermarkRemover:
             raise FileExistsError(f"File kết quả đã tồn tại: {output}")
         if not output.parent.is_dir():
             raise FileNotFoundError(f"Thư mục output không tồn tại: {output.parent}")
+        if mode not in {"gemini", "veo3"}:
+            raise ValueError(f"Chế độ watermark video không hợp lệ: {mode}")
 
         info = self.probe(source)
         frame_bytes = info.width * info.height * 3
@@ -244,7 +302,8 @@ class VideoWatermarkRemover:
         succeeded = False
         try:
             decoder = subprocess.Popen(
-                self.build_decode_command(source), stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                self.build_decode_command(source),
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
             encoder = subprocess.Popen(
                 self.build_encode_command(source, temporary, info.width, info.height, info.fps),
@@ -261,11 +320,15 @@ class VideoWatermarkRemover:
                 if len(raw) != frame_bytes:
                     return {"success": False, "error": "Luồng frame video bị thiếu dữ liệu."}
                 frame = np.frombuffer(raw, dtype=np.uint8).reshape(info.height, info.width, 3)
-                cleaned, meta = self.remove_frame(
-                    frame, gain=gain, scale=scale, offset_x=offset_x, offset_y=offset_y
-                )
-                healed = heal_upscaled_video_edge_seam(cleaned, meta["box"])
-                encoder.stdin.write(healed.tobytes())
+                if mode == "veo3":
+                    cleaned, _ = self.remove_veo3_frame(frame)
+                    encoder.stdin.write(cleaned.tobytes())
+                else:
+                    cleaned, meta = self.remove_frame(
+                        frame, gain=gain, scale=scale, offset_x=offset_x, offset_y=offset_y
+                    )
+                    healed = heal_upscaled_video_edge_seam(cleaned, meta["box"])
+                    encoder.stdin.write(healed.tobytes())
                 processed += 1
                 if progress_callback:
                     progress_callback(processed, total_frames)
@@ -295,3 +358,8 @@ class VideoWatermarkRemover:
                 self._terminate(encoder)
                 if temporary.exists():
                     temporary.unlink()
+            for process in (decoder, encoder):
+                if process is not None:
+                    for stream in (process.stdin, process.stdout, process.stderr):
+                        if stream is not None and not stream.closed:
+                            stream.close()

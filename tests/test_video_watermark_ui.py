@@ -20,6 +20,11 @@ class VideoWatermarkUiTests(unittest.TestCase):
 
         for extension in ("*.mp4", "*.mov", "*.mkv", "*.webm"):
             self.assertIn(extension, tab.video_filter)
+        self.assertEqual(tab.mode_choice.currentData(), "veo3")
+        self.assertEqual(
+            {tab.mode_choice.itemData(index) for index in range(tab.mode_choice.count())},
+            {"veo3", "gemini"},
+        )
         tab.close()
 
     def test_main_window_exposes_separate_video_watermark_page(self):
