@@ -16,6 +16,7 @@ from app.updater import load_api_base_url, load_app_version, load_telemetry_debu
 
 
 WATERMARK_TYPE = "WATERMARK_GGFLOW"
+VIDEO_WATERMARK_TYPE = "WATERMARK_VIDEO"
 
 logging.basicConfig(
     level=logging.DEBUG if load_telemetry_debug() else logging.WARNING,
@@ -94,7 +95,9 @@ class TelemetryClient:
         except (requests.RequestException, ValueError, AttributeError):
             return False
 
-    def record_watermark(self, current_device_id: str, version: str) -> bool:
+    def record_watermark(
+        self, current_device_id: str, version: str, watermark_type: str = WATERMARK_TYPE
+    ) -> bool:
         try:
             response = api_request(
                 "POST",
@@ -102,7 +105,7 @@ class TelemetryClient:
                 session=self.session,
                 json={
                     "device_id": current_device_id,
-                    "type": WATERMARK_TYPE,
+                    "type": watermark_type,
                     "version": version,
                 },
                 timeout=5,
@@ -127,3 +130,7 @@ class TelemetryThread(QThread):
             client.ensure_installation(current_device_id, load_app_version())
         elif self.event == "watermark":
             client.record_watermark(current_device_id, load_app_version())
+        elif self.event == "video_watermark":
+            client.record_watermark(
+                current_device_id, load_app_version(), VIDEO_WATERMARK_TYPE
+            )

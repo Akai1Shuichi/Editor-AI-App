@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 
 from app.core.platform_utils import open_path
 from app.core.standalone_state import build_output_folder_name, resolve_new_output_folder
+from app.core.telemetry import TelemetryThread, should_record_watermark
 from app import config
 from app.core.video_watermark_remover import VideoWatermarkRemover
 
@@ -65,6 +66,7 @@ class VideoWatermarkTab(QWidget):
         self.output_dir: Optional[Path] = config.VIDEO_WATERMARK_DOWNLOADS_DIR
         self.current_run_dir: Optional[Path] = None
         self.worker: Optional[VideoWatermarkWorker] = None
+        self._telemetry_threads: List[TelemetryThread] = []
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -308,6 +310,16 @@ class VideoWatermarkTab(QWidget):
         self._set_running(False)
         self.status.setText(f"Hoàn tất: {success_count}/{total} video.")
         self.output_name.setText(build_output_folder_name("clean_video"))
+        if should_record_watermark(
+            success_count=success_count,
+            cancelled=bool(self.worker and self.worker._cancelled),
+        ):
+            telemetry_thread = TelemetryThread("video_watermark", self)
+            self._telemetry_threads.append(telemetry_thread)
+            telemetry_thread.finished.connect(
+                lambda: self._telemetry_threads.remove(telemetry_thread)
+            )
+            telemetry_thread.start()
 
     def cancel_processing(self) -> None:
         if self.worker and self.worker.isRunning():
