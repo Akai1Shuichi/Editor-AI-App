@@ -1,0 +1,88 @@
+name: Test build Editor Video App
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-release:
+    name: Create test draft release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: build-test-${{ github.run_id }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Editor Video App test build #${{ github.run_number }}" \
+            --notes "Build from $GITHUB_REPOSITORY@$GITHUB_SHA. Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --draft \
+            --latest=false
+
+  build:
+    name: Build on ${{ matrix.os }}
+    needs: prepare-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform_name: Windows
+          - os: macos-latest
+            platform_name: macOS
+          - os: ubuntu-latest
+            platform_name: Linux
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpulse0 libxcb-cursor0 libegl1 libxkbcommon-x11-0 zip
+
+      - name: Build app with PyInstaller
+        run: pyinstaller --noconfirm --clean editor_video_app.spec
+
+      - name: Package Windows artifact
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: Compress-Archive -Path dist/*, docs/tutorial/install-windows.md -DestinationPath EditorVideoApp-test-${{ github.run_number }}-${{ matrix.platform_name }}.zip
+
+      - name: Package macOS artifact
+        if: runner.os == 'macOS'
+        run: cd dist && zip -r ../EditorVideoApp-test-${{ github.run_number }}-${{ matrix.platform_name }}.zip .
+
+      - name: Package Linux artifact
+        if: runner.os == 'Linux'
+        run: cd dist && zip -r ../EditorVideoApp-test-${{ github.run_number }}-${{ matrix.platform_name }}.zip .
+
+      - name: Upload ZIP to test draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: build-test-${{ github.run_id }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            "EditorVideoApp-test-${{ github.run_number }}-${{ matrix.platform_name }}.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
