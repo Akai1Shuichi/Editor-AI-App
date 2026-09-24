@@ -61,6 +61,8 @@ jobs:
           sudo apt-get install -y libpulse0 libxcb-cursor0 libegl1 libxkbcommon-x11-0 zip
 
       - name: Build app with PyInstaller
+        env:
+          EDITOR_VIDEO_CONSOLE: "1"
         run: pyinstaller --noconfirm --clean editor_video_app.spec
 
       - name: Package Windows artifact

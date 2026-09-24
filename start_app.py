@@ -9,6 +9,7 @@ Hoặc kích hoạt virtualenv:
 
 import sys
 import os
+import hashlib
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -26,6 +27,12 @@ import certifi
 CA_BUNDLE = certifi.where()
 os.environ["SSL_CERT_FILE"] = CA_BUNDLE
 os.environ["REQUESTS_CA_BUNDLE"] = CA_BUNDLE
+if sys.stdout is not None:
+    print(
+        f"[DEBUG] certifi version={certifi.__version__} ca_bundle={CA_BUNDLE} "
+        f"sha256={hashlib.sha256(Path(CA_BUNDLE).read_bytes()).hexdigest()}",
+        flush=True,
+    )
 
 from app.main import main
 
