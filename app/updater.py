@@ -34,7 +34,7 @@ from app.update_download import update_package_filename
 
 
 DEFAULT_CONFIG = {
-    "version": "1.0",
+    "version": "1.1",
     "api_base_url": "http://localhost:3000/api/v1",
     "software_code": "s-editor",
     "telemetry_debug": False,
