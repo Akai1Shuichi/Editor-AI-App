@@ -4,11 +4,29 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  prepare-release:
+    name: Create test draft release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: build-test-${{ github.run_id }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Editor Video App test build #${{ github.run_number }}" \
+            --notes "Build from $GITHUB_REPOSITORY@$GITHUB_SHA. Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --draft \
+            --latest=false
+
   build:
     name: Build on ${{ matrix.os }}
+    needs: prepare-release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -58,9 +76,13 @@ jobs:
         if: runner.os == 'Linux'
         run: cd dist && zip -r ../EditorVideoApp-test-${{ github.run_number }}-${{ matrix.platform_name }}.zip .
 
-      - name: Upload build artifact
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: EditorVideoApp-test-${{ github.run_number }}-${{ matrix.platform_name }}
-          path: EditorVideoApp-test-${{ github.run_number }}-${{ matrix.platform_name }}.zip
+      - name: Upload ZIP to test draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: build-test-${{ github.run_id }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            "EditorVideoApp-test-${{ github.run_number }}-${{ matrix.platform_name }}.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
