@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any, Tuple, Callable
 import requests
 
 from app import config
+from app.core.telemetry import api_request
 
 class VibiAPIError(Exception):
     """Lỗi phát sinh khi gọi Vibi API."""
@@ -27,6 +28,11 @@ class VibiClient:
         """Kiểm tra xem API key đã được cấu hình chưa."""
         return bool(self.api_key and len(self.api_key.strip()) > 0)
 
+    def _request(self, method: str, url: str, **kwargs):
+        return api_request(
+            method, url, session=self.session, log_body=False, log_response=False, **kwargs
+        )
+
     def _get_headers(self) -> Dict[str, str]:
         """Tạo headers chứa authentication xi-api-key."""
         if not self.is_configured():
@@ -41,7 +47,7 @@ class VibiClient:
         """Lấy thông tin tài khoản và số dư credits (GET /v1/auth/me)."""
         url = f"{self.base_url}/v1/auth/me"
         try:
-            res = self.session.get(url, headers=self._get_headers(), timeout=15)
+            res = self._request("GET", url, headers=self._get_headers(), timeout=15)
             if res.status_code == 401:
                 raise VibiAPIError("API Key Voice API không chính xác hoặc đã hết hạn (Mã lỗi 401)!")
             res.raise_for_status()
@@ -56,7 +62,7 @@ class VibiClient:
         url = f"{self.base_url}/v1/models"
         params = {"provider": provider}
         try:
-            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res = self._request("GET", url, headers=self._get_headers(), params=params, timeout=15)
             res.raise_for_status()
             return res.json()
         except requests.RequestException as e:
@@ -69,7 +75,7 @@ class VibiClient:
         if search:
             params["search"] = search
         try:
-            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res = self._request("GET", url, headers=self._get_headers(), params=params, timeout=15)
             res.raise_for_status()
             data = res.json()
             return data.get("voices", [])
@@ -100,7 +106,7 @@ class VibiClient:
             params["required_languages"] = language
 
         try:
-            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res = self._request("GET", url, headers=self._get_headers(), params=params, timeout=15)
             res.raise_for_status()
             return res.json()
         except requests.RequestException as e:
@@ -137,7 +143,7 @@ class VibiClient:
             params["use_cases"] = use_cases
 
         try:
-            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res = self._request("GET", url, headers=self._get_headers(), params=params, timeout=15)
             res.raise_for_status()
             return res.json()
         except requests.RequestException as e:
@@ -147,7 +153,7 @@ class VibiClient:
         """Lấy danh sách các giọng MiniMax đã clone của người dùng (GET /v1/minimax/voices)."""
         url = f"{self.base_url}/v1/minimax/voices"
         try:
-            res = self.session.get(url, headers=self._get_headers(), timeout=15)
+            res = self._request("GET", url, headers=self._get_headers(), timeout=15)
             res.raise_for_status()
             data = res.json()
             return data.get("voices", [])
@@ -185,7 +191,7 @@ class VibiClient:
             params["accent"] = accent
 
         try:
-            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res = self._request("GET", url, headers=self._get_headers(), params=params, timeout=15)
             res.raise_for_status()
             return res.json()
         except requests.RequestException as e:
@@ -213,7 +219,7 @@ class VibiClient:
             params["language"] = language.lower()
 
         try:
-            res = self.session.get(url, headers=self._get_headers(), params=params, timeout=15)
+            res = self._request("GET", url, headers=self._get_headers(), params=params, timeout=15)
             res.raise_for_status()
             return res.json()
         except requests.RequestException as e:
@@ -263,7 +269,7 @@ class VibiClient:
             payload["provider"] = provider
 
         try:
-            res = self.session.post(url, headers=self._get_headers(), json=payload, timeout=60)
+            res = self._request("POST", url, headers=self._get_headers(), json=payload, timeout=60)
             if res.status_code in (200, 201, 202):
                 return res.json()
 
@@ -280,7 +286,7 @@ class VibiClient:
         """Lấy chi tiết và trạng thái của tác vụ theo ID (GET /v1/history/{id})."""
         url = f"{self.base_url}/v1/history/{task_id}"
         try:
-            res = self.session.get(url, headers=self._get_headers(), timeout=15)
+            res = self._request("GET", url, headers=self._get_headers(), timeout=15)
             res.raise_for_status()
             return res.json()
         except requests.RequestException as e:
@@ -326,7 +332,7 @@ class VibiClient:
         """Tải file từ URL về đường dẫn chỉ định."""
         try:
             target_path.parent.mkdir(parents=True, exist_ok=True)
-            with self.session.get(url, stream=True, timeout=30) as r:
+            with self._request("GET", url, stream=True, timeout=30) as r:
                 r.raise_for_status()
                 with open(target_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):

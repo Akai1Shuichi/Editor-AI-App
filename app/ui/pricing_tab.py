@@ -2,10 +2,11 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-import requests
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+
+from app.core.telemetry import api_request
 
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
@@ -37,7 +38,7 @@ class PricingFetchThread(QThread):
     def run(self):
         try:
             params = {"t": int(time.time())}
-            res = requests.get(self.url, params=params, timeout=10)
+            res = api_request("GET", self.url, params=params, timeout=10)
             res.raise_for_status()
             data = res.json()
             self.result_ready.emit(True, data, "")

@@ -8,12 +8,13 @@ import platform
 import subprocess
 import sys
 import tempfile
-import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
+
+import requests
 
 from PyQt6.QtCore import QThread, QUrl, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QDesktopServices
@@ -34,7 +35,7 @@ from app.update_download import update_package_filename
 
 
 DEFAULT_CONFIG = {
-    "version": "1.0",
+    "version": "1.1",
     "api_base_url": "http://localhost:3000/api/v1",
     "software_code": "s-editor",
     "telemetry_debug": False,
@@ -151,10 +152,19 @@ class UpdateCheckerThread(QThread):
         self.current_version = current_version or load_app_version()
 
     def run(self) -> None:
+        from app.core.telemetry import api_request
+
         try:
             request = build_update_check_request(self.api_base_url, self.software_code, self.current_version)
-            with urllib.request.urlopen(request, timeout=8) as response:
-                payload = json.loads(response.read().decode("utf-8"))
+            response = api_request(
+                "POST",
+                request.full_url,
+                json=json.loads(request.data),
+                headers={"User-Agent": "EditorVideoAI-Updater"},
+                timeout=8,
+            )
+            response.raise_for_status()
+            payload = response.json()
             update_info = parse_update_response(payload, current_version=self.current_version)
             if update_info is None:
                 self.no_update.emit(f"Bạn đang sử dụng phiên bản mới nhất ({self.current_version}).")
@@ -163,9 +173,10 @@ class UpdateCheckerThread(QThread):
                 self.api_base_url, self.software_code, update_info["version"]
             )
             self.update_available.emit(update_info)
-        except urllib.error.HTTPError as error:
-            self.check_failed.emit("Chưa tìm thấy bản cập nhật." if error.code == 404 else f"Máy chủ cập nhật trả về lỗi HTTP {error.code}.")
-        except (OSError, ValueError) as error:
+        except requests.HTTPError as error:
+            code = error.response.status_code
+            self.check_failed.emit("Chưa tìm thấy bản cập nhật." if code == 404 else f"Máy chủ cập nhật trả về lỗi HTTP {code}.")
+        except (requests.RequestException, ValueError) as error:
             self.check_failed.emit(f"Không thể kiểm tra bản cập nhật: {error}")
 
 
@@ -184,19 +195,29 @@ class UpdateDownloaderThread(QThread):
         self._cancelled = True
 
     def run(self) -> None:
+        from app.core.telemetry import api_request
+
         try:
             destination = Path(tempfile.gettempdir()) / "EditorVideoAI-Updates"
             destination.mkdir(parents=True, exist_ok=True)
-            request = urllib.request.Request(self.download_url, headers={"User-Agent": "EditorVideoAI-Updater"})
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with api_request(
+                "GET",
+                self.download_url,
+                headers={"User-Agent": "EditorVideoAI-Updater"},
+                stream=True,
+                timeout=30,
+            ) as response:
+                response.raise_for_status()
                 downloaded_name = update_package_filename(
-                    response.geturl(), response.headers.get("Content-Disposition"), self.file_name
+                    response.url, response.headers.get("Content-Disposition"), self.file_name
                 )
                 target = destination / downloaded_name
                 with target.open("wb") as stream:
                     total = int(response.headers.get("Content-Length", 0))
                     received = 0
-                    while chunk := response.read(65536):
+                    for chunk in response.iter_content(chunk_size=65536):
+                        if not chunk:
+                            continue
                         if self._cancelled:
                             target.unlink(missing_ok=True)
                             self.failed.emit("Đã hủy tải bản cập nhật.")
@@ -205,7 +226,7 @@ class UpdateDownloaderThread(QThread):
                         received += len(chunk)
                         self.progress.emit(received, total, received * 100 / total if total else 0)
             self.finished.emit(str(target))
-        except OSError as error:
+        except (OSError, requests.RequestException) as error:
             self.failed.emit(f"Không thể tải bản cập nhật: {error}")
 
 
