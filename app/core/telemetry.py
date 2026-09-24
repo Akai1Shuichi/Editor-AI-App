@@ -10,6 +10,7 @@ from urllib.parse import quote, urlencode
 import uuid
 
 import requests
+import certifi
 from PyQt6.QtCore import QThread
 
 from app.updater import load_api_base_url, load_app_version, load_telemetry_debug
@@ -52,6 +53,7 @@ def api_request(
 
     try:
         requester = session.request if session is not None else requests.request
+        kwargs.setdefault("verify", certifi.where())
         response = requester(method, url, **kwargs)
         if log_response and not kwargs.get("stream"):
             logger.debug("RESPONSE %s %s", response.status_code, response.text)

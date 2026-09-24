@@ -21,6 +21,12 @@ if venv_python.exists() and Path(sys.executable).resolve() != venv_python.resolv
     import subprocess
     sys.exit(subprocess.call([str(venv_python)] + sys.argv))
 
+import certifi
+
+CA_BUNDLE = certifi.where()
+os.environ["SSL_CERT_FILE"] = CA_BUNDLE
+os.environ["REQUESTS_CA_BUNDLE"] = CA_BUNDLE
+
 from app.main import main
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from PyInstaller.building.build_main import Analysis, EXE, PYZ
+from PyInstaller.utils.hooks import collect_data_files
 block_cipher = None
 SPEC_DIR = Path(__file__).parent if "__file__" in globals() else Path.cwd()
 
@@ -11,6 +12,7 @@ datas = [
     (str(SPEC_DIR / "app" / "data"), "app/data"),
     (str(SPEC_DIR / "assets" / "icon.ico"), "assets"),
 ]
+datas += collect_data_files("certifi")
 
 a = Analysis(
     [str(SPEC_DIR / "start_app.py")],
