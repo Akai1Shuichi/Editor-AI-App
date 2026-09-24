@@ -32,10 +32,18 @@ def safe_device_id(current_device_id: str) -> str:
     return f"{current_device_id[:4]}...{current_device_id[-4:]}"
 
 
-def api_request(method: str, url: str, *, session: Optional[requests.Session] = None, **kwargs):
-    """Make a telemetry request while logging a privacy-safe request trace."""
+def api_request(
+    method: str,
+    url: str,
+    *,
+    session: Optional[requests.Session] = None,
+    log_body: bool = True,
+    log_response: bool = True,
+    **kwargs,
+):
+    """Send an API request and log a privacy-safe trace."""
     logger.debug("REQUEST %s %s", method.upper(), url)
-    payload = kwargs.get("json")
+    payload = kwargs.get("json") if log_body else None
     if isinstance(payload, dict):
         payload = payload.copy()
         if "device_id" in payload:
@@ -45,7 +53,10 @@ def api_request(method: str, url: str, *, session: Optional[requests.Session] = 
     try:
         requester = session.request if session is not None else requests.request
         response = requester(method, url, **kwargs)
-        logger.debug("RESPONSE %s %s", response.status_code, response.text)
+        if log_response and not kwargs.get("stream"):
+            logger.debug("RESPONSE %s %s", response.status_code, response.text)
+        else:
+            logger.debug("RESPONSE %s %s", response.status_code, url)
         return response
     except requests.RequestException:
         logger.exception("NETWORK ERROR %s %s", method.upper(), url)
