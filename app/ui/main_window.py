@@ -99,11 +99,6 @@ class MainWindow(QMainWindow):
 
         sidebar_footer = QWidget()
         sidebar_footer.setObjectName("sidebar_footer")
-        footer_layout = QVBoxLayout(sidebar_footer)
-        footer_layout.setContentsMargins(12, 12, 12, 12)
-        version = QLabel(f"Editor Video AI  •  v{APP_VERSION}")
-        version.setObjectName("sidebar_version")
-        footer_layout.addWidget(version)
         layout.addWidget(sidebar_footer)
         return sidebar
 
@@ -159,38 +154,51 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(24, 10, 24, 10)
         layout.setSpacing(6)
 
-        for icon_name, text, url in (
-            (
-                "zalo.svg",
-                "Nhóm Zalo",
-                "https://zalo.me/g/2h4r4fbobrg66e9haa3q",
-            ),
-        ):
-            icon = QLabel()
-            icon.setPixmap(
-                QPixmap(str(ICONS_DIR / icon_name)).scaled(
-                    20,
-                    20,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
+        zalo_icon = QLabel()
+        zalo_icon.setPixmap(
+            QPixmap(str(ICONS_DIR / "zalo.svg")).scaled(
+                20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
             )
-            label = QLabel(
-                f'<a href="{url}" style="color: #93c5fd; '
-                f'text-decoration: underline;">{text}</a>'
-            )
-            label.setOpenExternalLinks(True)
-            label.setStyleSheet(
-                "color: #93c5fd; font-size: 12px; font-weight: 600;"
-            )
-            layout.addWidget(icon)
-            layout.addWidget(label)
-            layout.addSpacing(18)
+        )
+        layout.addWidget(zalo_icon)
+        zalo_link = QLabel(
+            '<a href="https://zalo.me/g/2h4r4fbobrg66e9haa3q" '
+            'style="color: #93c5fd; text-decoration: underline;">Nhóm Zalo</a>'
+        )
+        zalo_link.setOpenExternalLinks(True)
+        zalo_link.setStyleSheet("color: #93c5fd; font-size: 12px; font-weight: 600;")
+        layout.addWidget(zalo_link)
 
         layout.addStretch()
         self.footer_creator = QLabel("© Created by: botocIT")
         self.footer_creator.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
         layout.addWidget(self.footer_creator)
+        layout.addSpacing(16)
+
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.VLine)
+        divider.setStyleSheet("color: #334155;")
+        layout.addWidget(divider)
+        layout.addSpacing(10)
+
+        website_icon = QLabel()
+        website_icon.setObjectName("footer_website_icon")
+        website_icon.setPixmap(
+            QPixmap(str(ICONS_DIR / "globe.svg")).scaled(
+                18, 18, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        layout.addWidget(website_icon)
+        website_link = QLabel(
+            '<a href="https://botocit.com" '
+            'style="color: #dbeafe; text-decoration: none;">botocit.com</a>'
+        )
+        website_link.setObjectName("footer_website_link")
+        website_link.setOpenExternalLinks(True)
+        website_link.setStyleSheet("font-size: 12px; font-weight: 700;")
+        layout.addWidget(website_link)
         return footer
 
     def _check_update_automatically(self) -> None:
