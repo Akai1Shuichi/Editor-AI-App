@@ -54,7 +54,7 @@ class Phase1ReleaseTests(unittest.TestCase):
         self.assertIn('QPushButton("Xóa hết")', source)
         self.assertNotIn("btn_list_menu", source)
 
-    def test_main_window_import_does_not_load_later_phase_modules(self):
+    def test_main_window_only_loads_released_modules(self):
         source = (ROOT / "app" / "ui" / "main_window.py").read_text()
         module = ast.parse(source)
         imports = {
@@ -68,10 +68,10 @@ class Phase1ReleaseTests(unittest.TestCase):
                 "app.ui.project_workspace",
                 "app.ui.tts_tab",
                 "app.ui.settings_tab",
-                "app.ui.pricing_tab",
             }.isdisjoint(imports),
             "Phase-1 must not import modules scheduled for later releases.",
         )
+        self.assertIn("app.ui.pricing_tab", imports)
 
     def test_packaging_bundles_video_runtime(self):
         spec = (ROOT / "editor_video_app.spec").read_text()

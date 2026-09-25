@@ -148,6 +148,16 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     border-top: 1px solid #23252c;
 }
 
+#sidebar_version {
+    color: #70798a;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QTabWidget#workspace_pages::pane {
+    border: none;
+}
+
 #app_footer {
     background-color: #172033;
     border-top: 2px solid #2563eb;

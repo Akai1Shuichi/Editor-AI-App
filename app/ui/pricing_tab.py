@@ -1,4 +1,3 @@
-import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -8,9 +7,8 @@ from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from app.core.telemetry import api_request
 
-
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
-ELEVENLABS_PRICING_API_URL = "https://gist.github.com/Akai1Shuichi/9cae5e226f6e3a624e24fa3fb207321e/raw/price.json"
+PRODUCTS_URL = "https://api.botocit.com/api/v2/telegram-buyer/products"
 
 
 def format_vnd_price(value: Any) -> str:
@@ -31,14 +29,15 @@ class PricingFetchThread(QThread):
     """Thread tải bảng giá động từ API."""
     result_ready = pyqtSignal(bool, object, str)
 
-    def __init__(self, url: str = ELEVENLABS_PRICING_API_URL):
+    def __init__(self, url: Optional[str] = None):
         super().__init__()
-        self.url = url
+        self.url = url or PRODUCTS_URL
 
     def run(self):
         try:
-            params = {"t": int(time.time())}
-            res = api_request("GET", self.url, params=params, timeout=10)
+            res = api_request(
+                "GET", self.url, headers={"Accept": "application/json"}, timeout=10
+            )
             res.raise_for_status()
             data = res.json()
             self.result_ready.emit(True, data, "")
@@ -49,11 +48,11 @@ class PricingFetchThread(QThread):
 class PricingTab(QWidget):
     """Trang giá mua Voice API qua Telegram bot."""
 
-    def __init__(self, parent=None, api_url: str = ELEVENLABS_PRICING_API_URL):
+    def __init__(self, parent=None, api_url: Optional[str] = None):
         super().__init__(parent)
         self.setObjectName("pricing_tab")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.pricing_url = api_url
+        self.pricing_url = api_url or PRODUCTS_URL
         self.worker: Optional[PricingFetchThread] = None
         self.init_ui()
         self.refresh_pricing()
@@ -63,7 +62,7 @@ class PricingTab(QWidget):
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(14)
 
-        self.lbl_pricing_title = QLabel("Bảng giá")
+        self.lbl_pricing_title = QLabel("Shop AI")
         self.lbl_pricing_title.setObjectName("page_heading")
         layout.addWidget(self.lbl_pricing_title)
 
@@ -72,6 +71,10 @@ class PricingTab(QWidget):
         self.offers_layout.setContentsMargins(0, 0, 0, 0)
         self.offers_layout.setSpacing(8)
         layout.addWidget(self.offers_container)
+
+        self.lbl_status = QLabel("Đang tải sản phẩm...")
+        self.lbl_status.setObjectName("page_subtitle")
+        layout.addWidget(self.lbl_status)
 
         purchase_row = QHBoxLayout()
         purchase_row.setContentsMargins(2, 0, 0, 0)
@@ -103,13 +106,19 @@ class PricingTab(QWidget):
     def refresh_pricing(self):
         if self.worker and self.worker.isRunning():
             return
+        if not self.offers_layout.count():
+            self.lbl_status.setText("Đang tải sản phẩm...")
+            self.lbl_status.show()
         self.worker = PricingFetchThread(self.pricing_url)
         self.worker.result_ready.connect(self._on_pricing_loaded)
         self.worker.start()
 
     def _on_pricing_loaded(self, success: bool, data: Any, error_msg: str):
-        if success and data:
+        if success:
             self.update_pricing_data(data)
+        else:
+            self.lbl_status.setText("Không tải được sản phẩm. Vui lòng thử lại sau.")
+            self.lbl_status.show()
 
     def update_pricing_data(self, data: Any):
         """Render từng gói giá từ mảng API, đồng thời hỗ trợ payload JSON cũ."""
@@ -118,6 +127,8 @@ class PricingTab(QWidget):
 
         for offer in offers:
             self.offers_layout.addWidget(self._create_offer_widget(offer))
+        self.lbl_status.setText("" if offers else "Chưa có sản phẩm nào.")
+        self.lbl_status.setVisible(not offers)
 
     @staticmethod
     def _extract_offers(data: Any) -> list[dict]:

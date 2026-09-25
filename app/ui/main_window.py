@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -17,6 +18,7 @@ from PyQt6.QtWidgets import (
 from app import config
 from app.core.standalone_state import StandaloneStateStore
 from app.core.telemetry import TelemetryThread
+from app.ui.pricing_tab import PricingTab
 from app.ui.watermark_tab import WatermarkTab
 from app.ui.video_watermark_tab import VideoWatermarkTab
 from app.updater import APP_VERSION, UpdateCheckerThread, UpdateDialog
@@ -26,7 +28,7 @@ ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 
 
 class MainWindow(QMainWindow):
-    """Giai đoạn 1: ứng dụng chỉ cung cấp công cụ gỡ watermark."""
+    """Cửa sổ công cụ gỡ watermark và Shop AI."""
 
     def __init__(self):
         super().__init__()
@@ -34,6 +36,7 @@ class MainWindow(QMainWindow):
         self.resize(1240, 820)
         self.setMinimumSize(900, 640)
 
+        self.nav_buttons: list[QPushButton] = []
         self.standalone_state = StandaloneStateStore()
         self.available_update_info: dict | None = None
         self.init_ui()
@@ -55,7 +58,13 @@ class MainWindow(QMainWindow):
         root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_update_bar())
+        workspace_layout = QHBoxLayout()
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.setSpacing(0)
+        workspace_layout.addWidget(self._build_sidebar())
+
         self.watermark_pages = QTabWidget()
+        self.watermark_pages.setObjectName("workspace_pages")
         self.watermark_tab = WatermarkTab()
         self.watermark_tab.configure_standalone(
             self.standalone_state, config.WATERMARK_DOWNLOADS_DIR
@@ -63,8 +72,56 @@ class MainWindow(QMainWindow):
         self.video_watermark_tab = VideoWatermarkTab()
         self.watermark_pages.addTab(self.watermark_tab, "Gỡ watermark Ảnh")
         self.watermark_pages.addTab(self.video_watermark_tab, "Gỡ watermark Video")
-        root_layout.addWidget(self.watermark_pages, stretch=1)
+        self.pricing_tab = PricingTab()
+        self.stack = QStackedWidget()
+        self.stack.setObjectName("content_container")
+        self.stack.addWidget(self.watermark_pages)
+        self.stack.addWidget(self.pricing_tab)
+        workspace_layout.addWidget(self.stack, stretch=1)
+        root_layout.addLayout(workspace_layout, stretch=1)
         root_layout.addWidget(self._build_footer())
+        last_page = self.standalone_state.load_last_page()
+        self.switch_page(last_page if last_page < self.stack.count() else 0)
+
+    def _build_sidebar(self) -> QFrame:
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(0, 12, 0, 0)
+        layout.setSpacing(4)
+
+        self.btn_nav_watermark = self.create_nav_btn("🍌  Gỡ watermark", 0)
+        self.btn_nav_pricing = self.create_nav_btn("🏷  Shop AI", 1)
+        for button in self.nav_buttons:
+            layout.addWidget(button)
+        layout.addStretch()
+
+        sidebar_footer = QWidget()
+        sidebar_footer.setObjectName("sidebar_footer")
+        footer_layout = QVBoxLayout(sidebar_footer)
+        footer_layout.setContentsMargins(12, 12, 12, 12)
+        version = QLabel(f"Editor Video AI  •  v{APP_VERSION}")
+        version.setObjectName("sidebar_version")
+        footer_layout.addWidget(version)
+        layout.addWidget(sidebar_footer)
+        return sidebar
+
+    def create_nav_btn(self, title: str, index: int) -> QPushButton:
+        button = QPushButton(title)
+        button.setObjectName("nav_btn")
+        button.setCheckable(True)
+        button.clicked.connect(lambda _, page=index: self.switch_page(page))
+        self.nav_buttons.append(button)
+        return button
+
+    def switch_page(self, index: int) -> None:
+        if not 0 <= index < self.stack.count():
+            return
+        self.stack.setCurrentIndex(index)
+        for button_index, button in enumerate(self.nav_buttons):
+            button.setChecked(button_index == index)
+        self.standalone_state.save_last_page(index)
 
     def _build_update_bar(self) -> QFrame:
         update_bar = QFrame()
