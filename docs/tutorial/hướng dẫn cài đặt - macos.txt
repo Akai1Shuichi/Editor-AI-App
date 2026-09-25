@@ -1,5 +1,7 @@
 HƯỚNG DẪN CÀI ĐẶT EDITORVIDEOAPP TRÊN macOS
 
+* Link hướng dẫn cài đặt cụ thể: https://botocit.com/installation?os=macos
+
 Khi tải ứng dụng từ Internet, macOS có thể hiện thông báo:
 
 "EditorVideoApp cannot be opened because it is from an unidentified developer."

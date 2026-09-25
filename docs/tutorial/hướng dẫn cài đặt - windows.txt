@@ -1,5 +1,7 @@
 HƯỚNG DẪN CÀI ĐẶT EDITORVIDEOAPP TRÊN WINDOWS
 
+* Link hướng dẫn cài đặt cụ thể: https://botocit.com/installation?os=windows
+
 * Đối với Windows 10 trở xuống, thông thường bạn có thể cài đặt và mở EditorVideoApp như bình thường, không bị Smart App Control chặn.
 
 * Đối với Windows 11, khi tải một ứng dụng bên thứ ba về máy, Smart App Control có thể chặn và không cho mở ứng dụng.
