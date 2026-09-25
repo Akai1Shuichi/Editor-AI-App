@@ -2,6 +2,9 @@ name: Build & Release Editor Video App
 
 on:
   push:
+    branches:
+      - master
+      - develop
     tags:
       - "v*"
   workflow_dispatch:
