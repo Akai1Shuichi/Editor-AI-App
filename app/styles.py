@@ -230,7 +230,7 @@ QTabWidget#workspace_pages::pane {
     font-weight: 700;
 }
 
-#bot_purchase_link {
+#bot_purchase_link, #zalo_purchase_link {
     color: #93c5fd;
     font-size: 12px;
     font-weight: 700;

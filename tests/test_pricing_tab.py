@@ -48,11 +48,31 @@ class PricingTabTests(unittest.TestCase):
         for expected in ("Google Pro 18 tháng", "Sale 30%", "79.000đ", "55.000đ"):
             self.assertIn(expected, texts)
 
-    def test_empty_response_and_failed_request_show_status(self):
+    def test_empty_response_shows_default_product_without_prices(self):
         with patch.object(PricingTab, "refresh_pricing"):
             tab = PricingTab()
         tab._on_pricing_loaded(True, [], "")
-        self.assertIn("Chưa có sản phẩm", tab.lbl_status.text())
+        self.assertEqual(tab.offers_layout.count(), 1)
+        offer = tab.offers_layout.itemAt(0).widget()
+        texts = [label.text() for label in offer.findChildren(QLabel)]
+        self.assertIn("Google Pro 18 tháng", texts)
+        self.assertIn("Sale 30%", texts)
+        self.assertIsNone(offer.findChild(QLabel, "offer_price"))
+        self.assertIsNone(offer.findChild(QLabel, "offer_old_price"))
+        self.assertTrue(tab.lbl_status.isHidden())
+        self.assertFalse(tab.zalo_contact.isHidden())
+        zalo_link = tab.zalo_contact.findChild(QLabel, "zalo_purchase_link")
+        self.assertIn("0867057221", zalo_link.text())
+        self.assertIn("https://zalo.me/0867057221", zalo_link.text())
+        self.assertTrue(zalo_link.openExternalLinks())
+        self.assertFalse(tab.zalo_contact.findChild(QLabel, "zalo_purchase_icon").pixmap().isNull())
+
+        tab.update_pricing_data([{"label": "Gói khác", "price": 55000}])
+        self.assertTrue(tab.zalo_contact.isHidden())
+
+    def test_failed_request_shows_error(self):
+        with patch.object(PricingTab, "refresh_pricing"):
+            tab = PricingTab()
         tab._on_pricing_loaded(False, {}, "network error")
         self.assertIn("Không tải được", tab.lbl_status.text())
 

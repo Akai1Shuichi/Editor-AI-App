@@ -9,6 +9,12 @@ from app.core.telemetry import api_request
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 PRODUCTS_URL = "https://api.botocit.com/api/v2/telegram-buyer/products"
+DEFAULT_PRODUCT = {
+    "label": "Google Pro 18 tháng",
+    "price": None,
+    "old_price": None,
+    "sale": 30,
+}
 
 
 def format_vnd_price(value: Any) -> str:
@@ -95,6 +101,27 @@ class PricingTab(QWidget):
         self.lbl_bot_purchase_link.setObjectName("bot_purchase_link")
         purchase_row.addWidget(self.lbl_bot_purchase_telegram_icon)
         purchase_row.addWidget(self.lbl_bot_purchase_link)
+
+        self.zalo_contact = QWidget()
+        zalo_row = QHBoxLayout(self.zalo_contact)
+        zalo_row.setContentsMargins(0, 0, 0, 0)
+        zalo_row.setSpacing(7)
+        zalo_row.addWidget(QLabel("hoặc"))
+        zalo_icon = QLabel()
+        zalo_icon.setObjectName("zalo_purchase_icon")
+        zalo_icon.setPixmap(
+            QPixmap(str(ICONS_DIR / "zalo.svg")).scaled(
+                18, 18, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        zalo_row.addWidget(zalo_icon)
+        zalo_link = QLabel('<a href="https://zalo.me/0867057221">0867057221</a>')
+        zalo_link.setObjectName("zalo_purchase_link")
+        zalo_link.setOpenExternalLinks(True)
+        zalo_row.addWidget(zalo_link)
+        self.zalo_contact.hide()
+        purchase_row.addWidget(self.zalo_contact)
         purchase_row.addStretch()
         layout.addLayout(purchase_row)
         layout.addStretch()
@@ -123,12 +150,16 @@ class PricingTab(QWidget):
     def update_pricing_data(self, data: Any):
         """Render từng gói giá từ mảng API, đồng thời hỗ trợ payload JSON cũ."""
         offers = self._extract_offers(data)
+        is_default = isinstance(data, list) and not data
+        if is_default:
+            offers = [DEFAULT_PRODUCT]
         self._clear_offers()
 
         for offer in offers:
             self.offers_layout.addWidget(self._create_offer_widget(offer))
         self.lbl_status.setText("" if offers else "Chưa có sản phẩm nào.")
         self.lbl_status.setVisible(not offers)
+        self.zalo_contact.setVisible(is_default)
 
     @staticmethod
     def _extract_offers(data: Any) -> list[dict]:
