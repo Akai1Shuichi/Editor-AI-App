@@ -5,6 +5,7 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication, QLabel
+from PyQt6.QtCore import QUrl
 
 from app.ui.pricing_tab import PricingTab, PricingFetchThread
 from app.ui.main_window import MainWindow
@@ -22,6 +23,51 @@ class PricingTabTests(unittest.TestCase):
             tab.pricing_url,
             "https://api.botocit.com/api/v2/telegram-buyer/products",
         )
+
+    def test_telegram_click_opens_bot_and_records_shop_ai(self):
+        with patch.object(PricingTab, "refresh_pricing"):
+            tab = PricingTab()
+        with patch("app.ui.pricing_tab.QDesktopServices") as desktop_services, \
+             patch("app.ui.pricing_tab.TelemetryThread.start"):
+            tab.lbl_bot_purchase_link.linkActivated.emit("https://t.me/DichVuIT_bot")
+
+        self.assertFalse(tab.lbl_bot_purchase_link.openExternalLinks())
+        desktop_services.openUrl.assert_called_once_with(QUrl("https://t.me/DichVuIT_bot"))
+        self.assertEqual([thread.event for thread in tab._telemetry_threads], ["shop_ai"])
+
+    def test_shop_ai_telemetry_sends_shop_ai_type(self):
+        from app.core.telemetry import TelemetryThread
+
+        class Session:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, method, url, **kwargs):
+                self.calls.append((method, url, kwargs))
+                return Response()
+
+        class Response:
+            status_code = 200
+            text = '{"success": true}'
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"success": True}
+
+        session = Session()
+        with patch("app.core.telemetry.requests.Session", return_value=session), \
+             patch("app.core.telemetry.load_api_base_url", return_value="https://api.example/api/v1"), \
+             patch("app.core.telemetry.load_app_version", return_value="1.2.3"), \
+             patch("app.core.telemetry.device_id", return_value="abc"):
+            TelemetryThread("shop_ai").run()
+
+        self.assertEqual(len(session.calls), 1)
+        self.assertEqual(session.calls[0][:2], ("POST", "https://api.example/api/v1/watermarks"))
+        self.assertEqual(session.calls[0][2]["json"], {
+            "device_id": "abc", "type": "SHOP_AI", "version": "1.2.3"
+        })
 
     def test_products_request_and_render(self):
         product = {

@@ -18,6 +18,7 @@ from app.updater import load_api_base_url, load_app_version, load_telemetry_debu
 
 WATERMARK_TYPE = "WATERMARK_GGFLOW"
 VIDEO_WATERMARK_TYPE = "WATERMARK_VIDEO"
+SHOP_AI = "SHOP_AI"
 
 logging.basicConfig(
     level=logging.DEBUG if load_telemetry_debug() else logging.WARNING,
@@ -147,3 +148,5 @@ class TelemetryThread(QThread):
             client.record_watermark(
                 current_device_id, load_app_version(), VIDEO_WATERMARK_TYPE
             )
+        elif self.event == "shop_ai":
+            client.record_watermark(current_device_id, load_app_version(), SHOP_AI)
