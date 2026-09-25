@@ -171,17 +171,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(zalo_link)
 
         layout.addStretch()
-        self.footer_creator = QLabel("© Created by: botocIT")
-        self.footer_creator.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
-        layout.addWidget(self.footer_creator)
-        layout.addSpacing(16)
-
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.VLine)
-        divider.setStyleSheet("color: #334155;")
-        layout.addWidget(divider)
-        layout.addSpacing(10)
-
         website_icon = QLabel()
         website_icon.setObjectName("footer_website_icon")
         website_icon.setPixmap(
@@ -199,6 +188,30 @@ class MainWindow(QMainWindow):
         website_link.setOpenExternalLinks(True)
         website_link.setStyleSheet("font-size: 12px; font-weight: 700;")
         layout.addWidget(website_link)
+
+        layout.addSpacing(16)
+        donate_link = QLabel(
+            '<a href="https://qr-donate.vercel.app/" '
+            'style="color: #fbbf24; text-decoration: none;">'
+            '<span style="color: #fb7185; font-size: 15px;">♥</span> '
+            'Donate</a>'
+        )
+        donate_link.setObjectName("footer_donate_link")
+        donate_link.setOpenExternalLinks(True)
+        donate_link.setToolTip("Mở trang ủng hộ dự án")
+        donate_link.setStyleSheet("font-size: 12px; font-weight: 600;")
+        layout.addWidget(donate_link)
+
+        layout.addSpacing(16)
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.VLine)
+        divider.setStyleSheet("color: #334155;")
+        layout.addWidget(divider)
+        layout.addSpacing(10)
+
+        self.footer_creator = QLabel("© Created by: botocIT")
+        self.footer_creator.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
+        layout.addWidget(self.footer_creator)
         return footer
 
     def _check_update_automatically(self) -> None:
