@@ -54,11 +54,15 @@ jobs:
       - name: Package Windows ZIP
         if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
         shell: powershell
-        run: Compress-Archive -Path dist/*, docs/tutorial/install-windows.md -DestinationPath EditorVideoApp-${{ github.ref_name }}-${{ matrix.platform_name }}.zip
+        run: |
+          Copy-Item -LiteralPath 'docs/tutorial/hướng dẫn cài đặt - windows.txt' -Destination dist -ErrorAction Stop
+          Compress-Archive -Path dist/* -DestinationPath EditorVideoApp-${{ github.ref_name }}-${{ matrix.platform_name }}.zip
 
       - name: Package macOS ZIP
         if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
-        run: cd dist && zip -r ../EditorVideoApp-${{ github.ref_name }}-${{ matrix.platform_name }}.zip .
+        run: |
+          cp 'docs/tutorial/hướng dẫn cài đặt - macos.txt' dist/
+          cd dist && zip -r ../EditorVideoApp-${{ github.ref_name }}-${{ matrix.platform_name }}.zip .
 
       - name: Package Linux ZIP
         if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
