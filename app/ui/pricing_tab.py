@@ -9,12 +9,14 @@ from app.core.telemetry import api_request
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 PRODUCTS_URL = "https://api.botocit.com/api/v2/telegram-buyer/products"
-DEFAULT_PRODUCT = {
-    "label": "Google Pro 18 tháng",
-    "price": None,
-    "old_price": None,
-    "sale": 30,
-}
+DEFAULT_PRODUCTS = (
+    {
+        "label": "Google Pro 18 tháng",
+        "price": None,
+        "old_price": None,
+        "sale": 30,
+    },
+)
 
 
 def format_vnd_price(value: Any) -> str:
@@ -150,16 +152,21 @@ class PricingTab(QWidget):
     def update_pricing_data(self, data: Any):
         """Render từng gói giá từ mảng API, đồng thời hỗ trợ payload JSON cũ."""
         offers = self._extract_offers(data)
-        is_default = isinstance(data, list) and not data
-        if is_default:
-            offers = [DEFAULT_PRODUCT]
+        missing_defaults = []
+        if isinstance(data, list):
+            labels = {str(offer.get("label") or "").strip().casefold() for offer in offers}
+            missing_defaults = [
+                product for product in DEFAULT_PRODUCTS
+                if product["label"].casefold() not in labels
+            ]
+            offers = missing_defaults + offers
         self._clear_offers()
 
         for offer in offers:
             self.offers_layout.addWidget(self._create_offer_widget(offer))
         self.lbl_status.setText("" if offers else "Chưa có sản phẩm nào.")
         self.lbl_status.setVisible(not offers)
-        self.zalo_contact.setVisible(is_default)
+        self.zalo_contact.setVisible(bool(missing_defaults))
 
     @staticmethod
     def _extract_offers(data: Any) -> list[dict]:

@@ -67,7 +67,32 @@ class PricingTabTests(unittest.TestCase):
         self.assertTrue(zalo_link.openExternalLinks())
         self.assertFalse(tab.zalo_contact.findChild(QLabel, "zalo_purchase_icon").pixmap().isNull())
 
+    def test_missing_google_product_keeps_other_items_and_adds_default(self):
+        with patch.object(PricingTab, "refresh_pricing"):
+            tab = PricingTab()
         tab.update_pricing_data([{"label": "Gói khác", "price": 55000}])
+        self.assertEqual(tab.offers_layout.count(), 2)
+        default_offer = tab.offers_layout.itemAt(0).widget()
+        other_offer = tab.offers_layout.itemAt(1).widget()
+        self.assertEqual(default_offer.findChild(QLabel, "offer_label").text(), "Google Pro 18 tháng")
+        self.assertIsNone(default_offer.findChild(QLabel, "offer_price"))
+        self.assertEqual(other_offer.findChild(QLabel, "offer_label").text(), "Gói khác")
+        self.assertEqual(other_offer.findChild(QLabel, "offer_price").text(), "55.000đ")
+        self.assertFalse(tab.zalo_contact.isHidden())
+
+    def test_google_product_from_api_is_not_duplicated(self):
+        with patch.object(PricingTab, "refresh_pricing"):
+            tab = PricingTab()
+        tab.update_pricing_data([
+            {"label": "Gói khác", "price": 35000},
+            {"label": "Google Pro 18 tháng", "price": 55000},
+        ])
+        self.assertEqual(tab.offers_layout.count(), 2)
+        labels = [
+            tab.offers_layout.itemAt(index).widget().findChild(QLabel, "offer_label").text()
+            for index in range(tab.offers_layout.count())
+        ]
+        self.assertEqual(labels.count("Google Pro 18 tháng"), 1)
         self.assertTrue(tab.zalo_contact.isHidden())
 
     def test_failed_request_shows_error(self):
