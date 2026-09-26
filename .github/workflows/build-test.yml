@@ -87,6 +87,6 @@ jobs:
           RELEASE_TAG: build-test-${{ github.run_id }}
         run: |
           gh release upload "$RELEASE_TAG" \
-            "EditorVideoApp-test-${{ github.run_number }}-${{ matrix.platform_name }}.zip" \
+            "EditorVideoApp-v1.1-${{ matrix.platform_name }}.zip" \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
