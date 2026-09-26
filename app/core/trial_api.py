@@ -1,45 +1,35 @@
-"""Temporary public trial-check response until the backend endpoint is ready."""
+"""Public API client for checking whether a feature trial is available."""
 
 from __future__ import annotations
 
-from urllib.parse import quote
+from urllib.parse import urlencode
 
-import requests
-
+from app.core.telemetry import api_request
 from app.updater import load_api_base_url
 
 
 VIDEO_WATERMARK_TYPE = "WATERMARK_VIDEO"
 
-# Change this response to {"isTrial": False} to preview the blocked state.
-MOCK_TRIAL_RESPONSES = {
-    VIDEO_WATERMARK_TYPE: {"isTrial": True},
-}
-
 
 class TrialClient:
-    def __init__(self, api_base_url: str | None = None, *, use_mock: bool = True):
+    def __init__(self, api_base_url: str | None = None):
         self.api_base_url = (api_base_url or load_api_base_url()).rstrip("/")
-        self.use_mock = use_mock
 
     def get_trial(self, trial_type: str) -> dict:
-        """GET public trial state by type; use mock data until the API exists."""
-        if self.use_mock:
-            response = MOCK_TRIAL_RESPONSES.get(trial_type)
-            if response is None:
-                raise ValueError(f"Loại tính năng không hợp lệ: {trial_type}")
-            return response.copy()
-
-        response = requests.get(
-            f"{self.api_base_url}/trials/{quote(trial_type, safe='')}", timeout=5
+        """GET /trials/check?type=<type> and return its data object."""
+        response = api_request(
+            "GET",
+            f"{self.api_base_url}/trials/check?{urlencode({'type': trial_type})}",
+            timeout=5,
         )
         response.raise_for_status()
         payload = response.json()
-        if isinstance(payload, dict) and "data" in payload:
-            payload = payload["data"]
-        if not isinstance(payload, dict) or type(payload.get("isTrial")) is not bool:
+        if not isinstance(payload, dict) or payload.get("success") is not True:
+            raise ValueError("Không thể kiểm tra quyền dùng thử")
+        data = payload.get("data")
+        if not isinstance(data, dict) or type(data.get("isTrial")) is not bool:
             raise ValueError("Phản hồi dùng thử không hợp lệ")
-        return payload
+        return data
 
     def check(self, trial_type: str) -> bool:
         payload = self.get_trial(trial_type)
