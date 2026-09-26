@@ -3,21 +3,16 @@
 from __future__ import annotations
 
 import json
-import os
 import platform
-import subprocess
 import sys
-import tempfile
 import urllib.request
-import zipfile
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
 import requests
 
-from PyQt6.QtCore import QThread, QUrl, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtCore import QThread, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -30,7 +25,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from app.update_installer import start_update_handoff
 from app.update_download import update_package_filename
 
 
@@ -74,6 +68,13 @@ def load_telemetry_debug() -> bool:
 APP_VERSION = load_app_version()
 DEFAULT_API_BASE_URL = load_api_base_url()
 DEFAULT_SOFTWARE_CODE = load_software_code()
+
+
+def update_download_directory() -> Path:
+    """Keep the release package beside the packaged app."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
 
 
 def parse_version(value: str) -> tuple[int, ...]:
@@ -154,6 +155,7 @@ class UpdateCheckerThread(QThread):
     def run(self) -> None:
         from app.core.telemetry import api_request
 
+        partial: Path | None = None
         try:
             request = build_update_check_request(self.api_base_url, self.software_code, self.current_version)
             response = api_request(
@@ -198,8 +200,7 @@ class UpdateDownloaderThread(QThread):
         from app.core.telemetry import api_request
 
         try:
-            destination = Path(tempfile.gettempdir()) / "EditorVideoAI-Updates"
-            destination.mkdir(parents=True, exist_ok=True)
+            destination = update_download_directory()
             with api_request(
                 "GET",
                 self.download_url,
@@ -212,21 +213,25 @@ class UpdateDownloaderThread(QThread):
                     response.url, response.headers.get("Content-Disposition"), self.file_name
                 )
                 target = destination / downloaded_name
-                with target.open("wb") as stream:
+                partial = target.with_name(target.name + ".part")
+                with partial.open("wb") as stream:
                     total = int(response.headers.get("Content-Length", 0))
                     received = 0
                     for chunk in response.iter_content(chunk_size=65536):
                         if not chunk:
                             continue
                         if self._cancelled:
-                            target.unlink(missing_ok=True)
+                            partial.unlink(missing_ok=True)
                             self.failed.emit("Đã hủy tải bản cập nhật.")
                             return
                         stream.write(chunk)
                         received += len(chunk)
                         self.progress.emit(received, total, received * 100 / total if total else 0)
+                partial.replace(target)
             self.finished.emit(str(target))
         except (OSError, requests.RequestException) as error:
+            if partial is not None:
+                partial.unlink(missing_ok=True)
             self.failed.emit(f"Không thể tải bản cập nhật: {error}")
 
 
@@ -251,7 +256,7 @@ class UpdateDialog(QDialog):
         notes.setHtml(self.update_info.get("notes", "Không có mô tả."))
         notes.setReadOnly(True)
         layout.addWidget(notes, 1)
-        layout.addWidget(QLabel("Bản cài đặt sẽ được tải từ máy chủ cập nhật."))
+        layout.addWidget(QLabel("Gói cập nhật sẽ được lưu cạnh ứng dụng để bạn tự cài đặt."))
         self.progress = QProgressBar()
         self.progress.setVisible(False)
         layout.addWidget(self.progress)
@@ -283,72 +288,16 @@ class UpdateDialog(QDialog):
 
     @pyqtSlot(str)
     def _download_finished(self, archive: str) -> None:
-        try:
-            package = Path(archive)
-            if package.suffix.lower() != ".zip":
-                raise OSError("Gói cập nhật phải là tệp ZIP.")
-            staging_directory = self._extract_archive(package)
-            start_update_handoff(staging_directory)
-        except (OSError, zipfile.BadZipFile) as error:
-            self._download_failed(f"Không thể giải nén bản cập nhật: {error}")
-            return
-        self.progress.setFormat("Đang cài đặt bản cập nhật…")
+        QMessageBox.information(
+            self,
+            "Đã tải bản cập nhật",
+            f"Đã lưu gói cập nhật tại:\n{archive}\n\nỨng dụng sẽ đóng. Hãy giải nén ZIP và chạy ứng dụng trong thư mục đã giải nén.",
+        )
         self.cancel_button.setEnabled(False)
         self.accept()
         application = QApplication.instance()
         if application:
             application.quit()
-
-    @staticmethod
-    def _extract_archive(archive: Path) -> Path:
-        destination = archive.with_suffix("")
-        destination.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(archive) as package:
-            root = destination.resolve()
-            for item in package.infolist():
-                if not (root / item.filename).resolve().is_relative_to(root):
-                    raise OSError("Gói cập nhật chứa đường dẫn không an toàn.")
-            package.extractall(destination)
-        return destination
-
-    @staticmethod
-    def _launch_update(directory: Path) -> None:
-        if sys.platform == "win32":
-            executable = next(directory.rglob("*.exe"), None)
-            if executable:
-                os.startfile(str(executable))
-                return
-        elif sys.platform == "darwin":
-            application = next(directory.rglob("*.app"), None)
-            if application:
-                subprocess.Popen(["open", str(application)])
-                return
-            executable = next(
-                (item for item in directory.rglob("EditorVideoApp") if item.is_file()),
-                None,
-            )
-            if executable:
-                subprocess.Popen(["open", str(executable)])
-                return
-        else:
-            executable = next((item for item in directory.rglob("*") if item.is_file() and os.access(item, os.X_OK)), None)
-            if executable:
-                subprocess.Popen([str(executable)])
-                return
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
-
-    @staticmethod
-    def _launch_file(package: Path) -> None:
-        if sys.platform == "win32":
-            os.startfile(str(package))
-            return
-        if sys.platform == "darwin":
-            subprocess.Popen(["open", str(package)])
-            return
-        if os.access(package, os.X_OK):
-            subprocess.Popen([str(package)])
-            return
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(package)))
 
     @pyqtSlot(str)
     def _download_failed(self, message: str) -> None:
