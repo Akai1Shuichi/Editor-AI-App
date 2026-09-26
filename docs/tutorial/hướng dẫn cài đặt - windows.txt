@@ -1,19 +1,19 @@
-HƯỚNG DẪN CÀI ĐẶT EDITORVIDEOAPP TRÊN WINDOWS
+HƯỚNG DẪN CÀI ĐẶT EDITOR VIDEO APP TRÊN WINDOWS
 
-* Link hướng dẫn cài đặt cụ thể: https://botocit.com/installation?os=windows
+* Link video hướng dẫn cụ thể: https://youtu.be/8DlfoTZtyqg?si=MnYSNLwqjpWRChm0
 
-* Đối với Windows 10 trở xuống, thông thường bạn có thể cài đặt và mở EditorVideoApp như bình thường, không bị Smart App Control chặn.
+* Đối với Windows 10 trở xuống, thông thường bạn có thể cài đặt và mở EditorVideoApp như bình thường.
 
-* Đối với Windows 11, khi tải một ứng dụng bên thứ ba về máy, Smart App Control có thể chặn và không cho mở ứng dụng.
+* Đối với Windows 11, Smart App Control có thể cảnh báo app bên thứ 3.
 
 Để tắt Smart App Control:
 
-Start → Windows Security → App & browser control → Smart App Control settings → Off
+Start → Privacy & Security → App & browser control → Smart App Control settings → Off
 
 Sau khi tắt, hãy mở lại EditorVideoApp.
 
 * LƯU Ý
-Chúng tôi cam kết EditorVideoApp không chứa virus, mã độc và không thu thập dữ liệu cá nhân của người dùng.
+Cam kết an toàn, không có virus, botnet .
 Bạn có thể tự kiểm tra file cài đặt bằng VirusTotal tại virustotal.com hoặc sử dụng các phần mềm diệt virus bên thứ ba trước khi cài đặt.
 Cảm ơn bạn đã tin tưởng, sử dụng và ủng hộ phần mềm của chúng tôi.
 
