@@ -72,6 +72,7 @@ class MainWindow(QMainWindow):
         self.video_watermark_tab = VideoWatermarkTab()
         self.watermark_pages.addTab(self.watermark_tab, "Gỡ watermark Ảnh")
         self.watermark_pages.addTab(self.video_watermark_tab, "Gỡ watermark Video")
+        self.watermark_pages.currentChanged.connect(self._on_watermark_tab_changed)
         self.pricing_tab = PricingTab()
         self.stack = QStackedWidget()
         self.stack.setObjectName("content_container")
@@ -82,6 +83,10 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(self._build_footer())
         last_page = self.standalone_state.load_last_page()
         self.switch_page(last_page if last_page < self.stack.count() else 0)
+
+    def _on_watermark_tab_changed(self, index: int) -> None:
+        if self.watermark_pages.widget(index) is self.video_watermark_tab:
+            self.video_watermark_tab.on_tab_activated()
 
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
