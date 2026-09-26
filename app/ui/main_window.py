@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -17,6 +18,7 @@ from PyQt6.QtWidgets import (
 from app import config
 from app.core.standalone_state import StandaloneStateStore
 from app.core.telemetry import TelemetryThread
+from app.ui.pricing_tab import PricingTab
 from app.ui.watermark_tab import WatermarkTab
 from app.ui.video_watermark_tab import VideoWatermarkTab
 from app.updater import APP_VERSION, UpdateCheckerThread, UpdateDialog
@@ -26,7 +28,7 @@ ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 
 
 class MainWindow(QMainWindow):
-    """Giai đoạn 1: ứng dụng chỉ cung cấp công cụ gỡ watermark."""
+    """Cửa sổ công cụ gỡ watermark và Shop AI."""
 
     def __init__(self):
         super().__init__()
@@ -34,6 +36,7 @@ class MainWindow(QMainWindow):
         self.resize(1240, 820)
         self.setMinimumSize(900, 640)
 
+        self.nav_buttons: list[QPushButton] = []
         self.standalone_state = StandaloneStateStore()
         self.available_update_info: dict | None = None
         self.init_ui()
@@ -55,7 +58,13 @@ class MainWindow(QMainWindow):
         root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_update_bar())
+        workspace_layout = QHBoxLayout()
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.setSpacing(0)
+        workspace_layout.addWidget(self._build_sidebar())
+
         self.watermark_pages = QTabWidget()
+        self.watermark_pages.setObjectName("workspace_pages")
         self.watermark_tab = WatermarkTab()
         self.watermark_tab.configure_standalone(
             self.standalone_state, config.WATERMARK_DOWNLOADS_DIR
@@ -63,8 +72,56 @@ class MainWindow(QMainWindow):
         self.video_watermark_tab = VideoWatermarkTab()
         self.watermark_pages.addTab(self.watermark_tab, "Gỡ watermark Ảnh")
         self.watermark_pages.addTab(self.video_watermark_tab, "Gỡ watermark Video")
-        root_layout.addWidget(self.watermark_pages, stretch=1)
+        self.watermark_pages.currentChanged.connect(self._on_watermark_tab_changed)
+        self.pricing_tab = PricingTab()
+        self.stack = QStackedWidget()
+        self.stack.setObjectName("content_container")
+        self.stack.addWidget(self.watermark_pages)
+        self.stack.addWidget(self.pricing_tab)
+        workspace_layout.addWidget(self.stack, stretch=1)
+        root_layout.addLayout(workspace_layout, stretch=1)
         root_layout.addWidget(self._build_footer())
+        last_page = self.standalone_state.load_last_page()
+        self.switch_page(last_page if last_page < self.stack.count() else 0)
+
+    def _on_watermark_tab_changed(self, index: int) -> None:
+        if self.watermark_pages.widget(index) is self.video_watermark_tab:
+            self.video_watermark_tab.on_tab_activated()
+
+    def _build_sidebar(self) -> QFrame:
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(0, 12, 0, 0)
+        layout.setSpacing(4)
+
+        self.btn_nav_watermark = self.create_nav_btn("🍌  Gỡ watermark", 0)
+        self.btn_nav_pricing = self.create_nav_btn("🏷  Shop AI", 1)
+        for button in self.nav_buttons:
+            layout.addWidget(button)
+        layout.addStretch()
+
+        sidebar_footer = QWidget()
+        sidebar_footer.setObjectName("sidebar_footer")
+        layout.addWidget(sidebar_footer)
+        return sidebar
+
+    def create_nav_btn(self, title: str, index: int) -> QPushButton:
+        button = QPushButton(title)
+        button.setObjectName("nav_btn")
+        button.setCheckable(True)
+        button.clicked.connect(lambda _, page=index: self.switch_page(page))
+        self.nav_buttons.append(button)
+        return button
+
+    def switch_page(self, index: int) -> None:
+        if not 0 <= index < self.stack.count():
+            return
+        self.stack.setCurrentIndex(index)
+        for button_index, button in enumerate(self.nav_buttons):
+            button.setChecked(button_index == index)
+        self.standalone_state.save_last_page(index)
 
     def _build_update_bar(self) -> QFrame:
         update_bar = QFrame()
@@ -102,35 +159,61 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(24, 10, 24, 10)
         layout.setSpacing(6)
 
-        for icon_name, text, url in (
-            (
-                "zalo.svg",
-                "Nhóm Zalo",
-                "https://zalo.me/g/2h4r4fbobrg66e9haa3q",
-            ),
-        ):
-            icon = QLabel()
-            icon.setPixmap(
-                QPixmap(str(ICONS_DIR / icon_name)).scaled(
-                    20,
-                    20,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
+        zalo_icon = QLabel()
+        zalo_icon.setPixmap(
+            QPixmap(str(ICONS_DIR / "zalo.svg")).scaled(
+                20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
             )
-            label = QLabel(
-                f'<a href="{url}" style="color: #93c5fd; '
-                f'text-decoration: underline;">{text}</a>'
-            )
-            label.setOpenExternalLinks(True)
-            label.setStyleSheet(
-                "color: #93c5fd; font-size: 12px; font-weight: 600;"
-            )
-            layout.addWidget(icon)
-            layout.addWidget(label)
-            layout.addSpacing(18)
+        )
+        layout.addWidget(zalo_icon)
+        zalo_link = QLabel(
+            '<a href="https://zalo.me/g/2h4r4fbobrg66e9haa3q" '
+            'style="color: #93c5fd; text-decoration: underline;">Nhóm Zalo</a>'
+        )
+        zalo_link.setOpenExternalLinks(True)
+        zalo_link.setStyleSheet("color: #93c5fd; font-size: 12px; font-weight: 600;")
+        layout.addWidget(zalo_link)
 
         layout.addStretch()
+        website_icon = QLabel()
+        website_icon.setObjectName("footer_website_icon")
+        website_icon.setPixmap(
+            QPixmap(str(ICONS_DIR / "globe.svg")).scaled(
+                18, 18, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        layout.addWidget(website_icon)
+        website_link = QLabel(
+            '<a href="https://botocit.com" '
+            'style="color: #dbeafe; text-decoration: none;">botocit.com</a>'
+        )
+        website_link.setObjectName("footer_website_link")
+        website_link.setOpenExternalLinks(True)
+        website_link.setStyleSheet("font-size: 12px; font-weight: 700;")
+        layout.addWidget(website_link)
+
+        layout.addSpacing(16)
+        donate_link = QLabel(
+            '<a href="https://qr-donate.vercel.app/" '
+            'style="color: #fbbf24; text-decoration: none;">'
+            '<span style="color: #fb7185; font-size: 15px;">♥</span> '
+            'Donate</a>'
+        )
+        donate_link.setObjectName("footer_donate_link")
+        donate_link.setOpenExternalLinks(True)
+        donate_link.setToolTip("Mở trang ủng hộ dự án")
+        donate_link.setStyleSheet("font-size: 12px; font-weight: 600;")
+        layout.addWidget(donate_link)
+
+        layout.addSpacing(16)
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.VLine)
+        divider.setStyleSheet("color: #334155;")
+        layout.addWidget(divider)
+        layout.addSpacing(10)
+
         self.footer_creator = QLabel("© Created by: botocIT")
         self.footer_creator.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
         layout.addWidget(self.footer_creator)

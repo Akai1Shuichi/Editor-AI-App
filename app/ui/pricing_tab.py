@@ -1,16 +1,22 @@
-import time
 from pathlib import Path
 from typing import Any, Optional
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import Qt, QThread, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices, QPixmap
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from app.core.telemetry import api_request
-
+from app.core.telemetry import TelemetryThread, api_request
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
-ELEVENLABS_PRICING_API_URL = "https://gist.github.com/Akai1Shuichi/9cae5e226f6e3a624e24fa3fb207321e/raw/price.json"
+PRODUCTS_URL = "https://api.botocit.com/api/v2/telegram-buyer/products"
+DEFAULT_PRODUCTS = (
+    {
+        "label": "Google Pro 18 tháng",
+        "price": None,
+        "old_price": None,
+        "sale": 30,
+    },
+)
 
 
 def format_vnd_price(value: Any) -> str:
@@ -31,14 +37,15 @@ class PricingFetchThread(QThread):
     """Thread tải bảng giá động từ API."""
     result_ready = pyqtSignal(bool, object, str)
 
-    def __init__(self, url: str = ELEVENLABS_PRICING_API_URL):
+    def __init__(self, url: Optional[str] = None):
         super().__init__()
-        self.url = url
+        self.url = url or PRODUCTS_URL
 
     def run(self):
         try:
-            params = {"t": int(time.time())}
-            res = api_request("GET", self.url, params=params, timeout=10)
+            res = api_request(
+                "GET", self.url, headers={"Accept": "application/json"}, timeout=10
+            )
             res.raise_for_status()
             data = res.json()
             self.result_ready.emit(True, data, "")
@@ -49,12 +56,13 @@ class PricingFetchThread(QThread):
 class PricingTab(QWidget):
     """Trang giá mua Voice API qua Telegram bot."""
 
-    def __init__(self, parent=None, api_url: str = ELEVENLABS_PRICING_API_URL):
+    def __init__(self, parent=None, api_url: Optional[str] = None):
         super().__init__(parent)
         self.setObjectName("pricing_tab")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.pricing_url = api_url
+        self.pricing_url = api_url or PRODUCTS_URL
         self.worker: Optional[PricingFetchThread] = None
+        self._telemetry_threads: list[TelemetryThread] = []
         self.init_ui()
         self.refresh_pricing()
 
@@ -63,7 +71,7 @@ class PricingTab(QWidget):
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(14)
 
-        self.lbl_pricing_title = QLabel("Bảng giá")
+        self.lbl_pricing_title = QLabel("Shop AI")
         self.lbl_pricing_title.setObjectName("page_heading")
         layout.addWidget(self.lbl_pricing_title)
 
@@ -72,6 +80,10 @@ class PricingTab(QWidget):
         self.offers_layout.setContentsMargins(0, 0, 0, 0)
         self.offers_layout.setSpacing(8)
         layout.addWidget(self.offers_container)
+
+        self.lbl_status = QLabel("Đang tải sản phẩm...")
+        self.lbl_status.setObjectName("page_subtitle")
+        layout.addWidget(self.lbl_status)
 
         purchase_row = QHBoxLayout()
         purchase_row.setContentsMargins(2, 0, 0, 0)
@@ -88,13 +100,44 @@ class PricingTab(QWidget):
         self.lbl_bot_purchase_link = QLabel(
             '<a href="https://t.me/DichVuIT_bot">@DichVuIT_bot</a>'
         )
-        self.lbl_bot_purchase_link.setOpenExternalLinks(True)
+        self.lbl_bot_purchase_link.setOpenExternalLinks(False)
+        self.lbl_bot_purchase_link.linkActivated.connect(self._open_telegram_bot)
         self.lbl_bot_purchase_link.setObjectName("bot_purchase_link")
         purchase_row.addWidget(self.lbl_bot_purchase_telegram_icon)
         purchase_row.addWidget(self.lbl_bot_purchase_link)
+
+        self.zalo_contact = QWidget()
+        zalo_row = QHBoxLayout(self.zalo_contact)
+        zalo_row.setContentsMargins(0, 0, 0, 0)
+        zalo_row.setSpacing(7)
+        zalo_row.addWidget(QLabel("hoặc"))
+        zalo_icon = QLabel()
+        zalo_icon.setObjectName("zalo_purchase_icon")
+        zalo_icon.setPixmap(
+            QPixmap(str(ICONS_DIR / "zalo.svg")).scaled(
+                18, 18, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        zalo_row.addWidget(zalo_icon)
+        zalo_link = QLabel('<a href="https://zalo.me/0867057221">0867057221</a>')
+        zalo_link.setObjectName("zalo_purchase_link")
+        zalo_link.setOpenExternalLinks(True)
+        zalo_row.addWidget(zalo_link)
+        self.zalo_contact.hide()
+        purchase_row.addWidget(self.zalo_contact)
         purchase_row.addStretch()
         layout.addLayout(purchase_row)
         layout.addStretch()
+
+    def _open_telegram_bot(self, url: str) -> None:
+        telemetry_thread = TelemetryThread("shop_ai", self)
+        self._telemetry_threads.append(telemetry_thread)
+        telemetry_thread.finished.connect(
+            lambda: self._telemetry_threads.remove(telemetry_thread)
+        )
+        telemetry_thread.start()
+        QDesktopServices.openUrl(QUrl(url))
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -103,21 +146,38 @@ class PricingTab(QWidget):
     def refresh_pricing(self):
         if self.worker and self.worker.isRunning():
             return
+        if not self.offers_layout.count():
+            self.lbl_status.setText("Đang tải sản phẩm...")
+            self.lbl_status.show()
         self.worker = PricingFetchThread(self.pricing_url)
         self.worker.result_ready.connect(self._on_pricing_loaded)
         self.worker.start()
 
     def _on_pricing_loaded(self, success: bool, data: Any, error_msg: str):
-        if success and data:
+        if success:
             self.update_pricing_data(data)
+        else:
+            self.lbl_status.setText("Không tải được sản phẩm. Vui lòng thử lại sau.")
+            self.lbl_status.show()
 
     def update_pricing_data(self, data: Any):
         """Render từng gói giá từ mảng API, đồng thời hỗ trợ payload JSON cũ."""
         offers = self._extract_offers(data)
+        missing_defaults = []
+        if isinstance(data, list):
+            labels = {str(offer.get("label") or "").strip().casefold() for offer in offers}
+            missing_defaults = [
+                product for product in DEFAULT_PRODUCTS
+                if product["label"].casefold() not in labels
+            ]
+            offers = missing_defaults + offers
         self._clear_offers()
 
         for offer in offers:
             self.offers_layout.addWidget(self._create_offer_widget(offer))
+        self.lbl_status.setText("" if offers else "Chưa có sản phẩm nào.")
+        self.lbl_status.setVisible(not offers)
+        self.zalo_contact.setVisible(bool(missing_defaults))
 
     @staticmethod
     def _extract_offers(data: Any) -> list[dict]:

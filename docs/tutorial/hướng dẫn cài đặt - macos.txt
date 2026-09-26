@@ -1,0 +1,32 @@
+HƯỚNG DẪN CÀI ĐẶT EDITOR VIDEO APP TRÊN macOS
+
+* Link video hướng dẫn cụ thể: https://youtu.be/6r8L3jINh8s?si=FfOFwzh242gfTy_v
+
+Khi tải ứng dụng từ Internet, macOS có thể cảnh báo app bên thứ 3 hiện thông báo:
+
+"EditorVideoApp cannot be opened because it is from an unidentified developer."
+
+Cách mở app:
+
+* CÁCH 1: CHUỘT PHẢI → OPEN
+
+1. Mở Finder.
+2. Vào thư mục Applications.
+3. Tìm EditorVideoApp.
+4. Chuột phải vào ứng dụng.
+   Hoặc giữ phím Control rồi click vào ứng dụng.
+5. Chọn Open.
+6. Khi macOS hỏi lại, chọn Open một lần nữa.
+
+Lưu ý:
+Không phải giữ Control rồi double-click.
+Cần dùng Control + Click → Open.
+
+
+* LƯU Ý
+Cam kết an toàn, không có virus, botnet .
+Bạn có thể tự kiểm tra file cài đặt bằng VirusTotal tại virustotal.com hoặc sử dụng các phần mềm diệt virus bên thứ ba trước khi cài đặt.
+Cảm ơn bạn đã tin tưởng, sử dụng và ủng hộ phần mềm của chúng tôi.
+
+* Hỗ trợ và trao đổi :
+Nhóm Zalo : https://zalo.me/g/2h4r4fbobrg66e9haa3q

@@ -7,11 +7,12 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QSettings
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QLabel
 
 from app import config
 from app.ui.video_watermark_tab import VideoWatermarkTab
 from app.ui.main_window import MainWindow
+from app.ui.pricing_tab import PricingTab
 
 
 class VideoWatermarkUiTests(unittest.TestCase):
@@ -57,6 +58,24 @@ class VideoWatermarkUiTests(unittest.TestCase):
         labels = [window.watermark_pages.tabText(index) for index in range(window.watermark_pages.count())]
 
         self.assertIn("Gỡ watermark Video", labels)
+        window.close()
+
+    def test_footer_links_to_botocit_website(self):
+        with patch.object(PricingTab, "refresh_pricing"), patch.object(
+            MainWindow, "_record_installation"
+        ), patch.object(MainWindow, "_check_update_automatically"):
+            window = MainWindow()
+            window.show()
+            self.application.processEvents()
+        link = window.findChild(QLabel, "footer_website_link")
+        icon = window.findChild(QLabel, "footer_website_icon")
+        self.assertIsNotNone(link)
+        self.assertIn("https://botocit.com", link.text())
+        self.assertTrue(link.openExternalLinks())
+        self.assertIsNotNone(icon)
+        self.assertFalse(icon.pixmap().isNull())
+        self.assertGreater(link.mapTo(window, link.rect().topLeft()).x(),
+                           window.footer_creator.mapTo(window, window.footer_creator.rect().topLeft()).x())
         window.close()
 
 
