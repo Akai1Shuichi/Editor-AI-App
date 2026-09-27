@@ -2,10 +2,11 @@
 
 ## Editor Video AI v1.1 — 26/09/2026
 
-- Thêm tính năng gỡ watermark google flow cho video ở phiên bản Omini và Veo 3
-- Có thể xóa watermark hàng loạt
+- Hỗ trợ 2 phiên bản Omini và Veo 3
+- Tự động và Xử lý hàng loạt
 - Tốc độ nhanh
-- Giữ được chất lượng gốc như ban đầu .
+- Chất lượng xử lý tốt
+- Cam kết an toàn, không có virus, botnet .
 
 ## Editor Video AI v1.0 — 17/09/2026
 

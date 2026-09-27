@@ -1,11 +1,11 @@
 from pathlib import Path
 from typing import Any, Optional
+import requests
 
 from PyQt6.QtCore import Qt, QThread, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices, QPixmap
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from app.core.telemetry import TelemetryThread, api_request
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 PRODUCTS_URL = "https://api.botocit.com/api/v2/telegram-buyer/products"
@@ -43,9 +43,7 @@ class PricingFetchThread(QThread):
 
     def run(self):
         try:
-            res = api_request(
-                "GET", self.url, headers={"Accept": "application/json"}, timeout=10
-            )
+            res = requests.get(self.url, headers={"Accept": "application/json"}, timeout=10)
             res.raise_for_status()
             data = res.json()
             self.result_ready.emit(True, data, "")
@@ -62,7 +60,6 @@ class PricingTab(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.pricing_url = api_url or PRODUCTS_URL
         self.worker: Optional[PricingFetchThread] = None
-        self._telemetry_threads: list[TelemetryThread] = []
         self.init_ui()
         self.refresh_pricing()
 
@@ -131,12 +128,6 @@ class PricingTab(QWidget):
         layout.addStretch()
 
     def _open_telegram_bot(self, url: str) -> None:
-        telemetry_thread = TelemetryThread("shop_ai", self)
-        self._telemetry_threads.append(telemetry_thread)
-        telemetry_thread.finished.connect(
-            lambda: self._telemetry_threads.remove(telemetry_thread)
-        )
-        telemetry_thread.start()
         QDesktopServices.openUrl(QUrl(url))
 
     def showEvent(self, event):

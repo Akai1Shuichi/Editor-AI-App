@@ -1,13 +1,12 @@
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QMessageBox,
     QPushButton,
     QStackedWidget,
     QTabWidget,
@@ -17,11 +16,10 @@ from PyQt6.QtWidgets import (
 
 from app import config
 from app.core.standalone_state import StandaloneStateStore
-from app.core.telemetry import TelemetryThread
 from app.ui.pricing_tab import PricingTab
 from app.ui.watermark_tab import WatermarkTab
 from app.ui.video_watermark_tab import VideoWatermarkTab
-from app.updater import APP_VERSION, UpdateCheckerThread, UpdateDialog
+from app.version import APP_VERSION
 
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
@@ -38,14 +36,7 @@ class MainWindow(QMainWindow):
 
         self.nav_buttons: list[QPushButton] = []
         self.standalone_state = StandaloneStateStore()
-        self.available_update_info: dict | None = None
         self.init_ui()
-        QTimer.singleShot(0, self._record_installation)
-        QTimer.singleShot(1500, self._check_update_automatically)
-
-    def _record_installation(self) -> None:
-        self._installation_telemetry = TelemetryThread("installation", self)
-        self._installation_telemetry.start()
 
     def init_ui(self):
         central_widget = QWidget()
@@ -57,7 +48,7 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        root_layout.addWidget(self._build_update_bar())
+        root_layout.addWidget(self._build_title_bar())
         workspace_layout = QHBoxLayout()
         workspace_layout.setContentsMargins(0, 0, 0, 0)
         workspace_layout.setSpacing(0)
@@ -123,7 +114,7 @@ class MainWindow(QMainWindow):
             button.setChecked(button_index == index)
         self.standalone_state.save_last_page(index)
 
-    def _build_update_bar(self) -> QFrame:
+    def _build_title_bar(self) -> QFrame:
         update_bar = QFrame()
         update_bar.setObjectName("update_bar")
         update_bar.setMinimumHeight(52)
@@ -136,19 +127,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
         layout.addStretch()
 
-        self.update_status_label = QLabel(f"v{APP_VERSION}  •  Chưa kiểm tra")
-        self.update_status_label.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
-        layout.addWidget(self.update_status_label)
-        self.install_update_button = QPushButton("Cập nhật ngay")
-        self.install_update_button.setObjectName("btn_primary")
-        self.install_update_button.setVisible(False)
-        self.install_update_button.clicked.connect(self._open_available_update)
-        layout.addWidget(self.install_update_button)
-        self.update_button = QPushButton("Kiểm tra cập nhật")
-        self.update_button.setObjectName("btn_subtle")
-        self.update_button.setToolTip("Kiểm tra bản cập nhật từ máy chủ S Editor")
-        self.update_button.clicked.connect(self._check_update_manually)
-        layout.addWidget(self.update_button)
+        version_label = QLabel(f"v{APP_VERSION}")
+        version_label.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
+        layout.addWidget(version_label)
         return update_bar
 
     def _build_footer(self) -> QFrame:
@@ -218,64 +199,3 @@ class MainWindow(QMainWindow):
         self.footer_creator.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
         layout.addWidget(self.footer_creator)
         return footer
-
-    def _check_update_automatically(self) -> None:
-        self._clear_available_update()
-        self._set_update_status("Đang kiểm tra cập nhật…", "#94a3b8")
-        self._auto_updater = UpdateCheckerThread(self)
-        self._auto_updater.update_available.connect(self._on_update_available)
-        self._auto_updater.no_update.connect(self._on_no_update)
-        self._auto_updater.check_failed.connect(self._on_update_check_failed)
-        self._auto_updater.start()
-
-    def _check_update_manually(self) -> None:
-        self.update_button.setEnabled(False)
-        self._clear_available_update()
-        self._set_update_status("Đang kiểm tra cập nhật…", "#94a3b8")
-        self._manual_updater = UpdateCheckerThread(self)
-        self._manual_updater.update_available.connect(self._on_update_available)
-        self._manual_updater.no_update.connect(
-            self._on_no_update
-        )
-        self._manual_updater.no_update.connect(
-            lambda message: QMessageBox.information(self, "Kiểm tra cập nhật", message)
-        )
-        self._manual_updater.check_failed.connect(
-            self._on_update_check_failed
-        )
-        self._manual_updater.check_failed.connect(
-            lambda message: QMessageBox.warning(self, "Kiểm tra cập nhật", message)
-        )
-        self._manual_updater.finished.connect(lambda: self.update_button.setEnabled(True))
-        self._manual_updater.start()
-
-    def _set_update_status(self, text: str, color: str) -> None:
-        self.update_status_label.setText(text)
-        self.update_status_label.setStyleSheet(
-            f"color: {color}; font-size: 12px; font-weight: 600;"
-        )
-
-    def _on_no_update(self, _message: str) -> None:
-        self._clear_available_update()
-        self._set_update_status(f"✓ Đã cập nhật (v{APP_VERSION})", "#4ade80")
-
-    def _on_update_available(self, update_info: dict) -> None:
-        self.available_update_info = update_info
-        self.install_update_button.setVisible(True)
-        self._set_update_status(f"↑ Có bản mới v{update_info['version']}", "#fbbf24")
-        self._show_update_dialog(update_info)
-
-    def _on_update_check_failed(self, _message: str) -> None:
-        self._clear_available_update()
-        self._set_update_status("Không thể kiểm tra cập nhật", "#f87171")
-
-    def _clear_available_update(self) -> None:
-        self.available_update_info = None
-        self.install_update_button.setVisible(False)
-
-    def _open_available_update(self) -> None:
-        if self.available_update_info:
-            self._show_update_dialog(self.available_update_info)
-
-    def _show_update_dialog(self, update_info: dict) -> None:
-        UpdateDialog(update_info, self).exec()

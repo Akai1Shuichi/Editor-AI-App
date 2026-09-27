@@ -61,9 +61,7 @@ class VideoWatermarkUiTests(unittest.TestCase):
         window.close()
 
     def test_footer_links_to_botocit_website(self):
-        with patch.object(PricingTab, "refresh_pricing"), patch.object(
-            MainWindow, "_record_installation"
-        ), patch.object(MainWindow, "_check_update_automatically"):
+        with patch.object(PricingTab, "refresh_pricing"):
             window = MainWindow()
             window.show()
             self.application.processEvents()
