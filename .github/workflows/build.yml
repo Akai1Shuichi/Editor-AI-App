@@ -2,20 +2,24 @@ name: Build & Release Editor Video App
 
 on:
   push:
-    branches:
-      - master
-      - develop
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag (for example, v1.1.0)
+        required: true
+        type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     name: Build on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
@@ -52,34 +56,31 @@ jobs:
         run: pyinstaller --noconfirm --clean editor_video_app.spec
 
       - name: Package Windows ZIP
-        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Copy-Item -LiteralPath 'docs/tutorial/hướng dẫn cài đặt - windows.txt' -Destination dist -ErrorAction Stop
-          Compress-Archive -Path dist/* -DestinationPath EditorVideoApp-${{ github.ref_name }}-${{ matrix.platform_name }}.zip
+          Compress-Archive -Path dist/* -DestinationPath "EditorVideoApp-$($env:RELEASE_TAG)-${{ matrix.platform_name }}.zip"
 
       - name: Package macOS ZIP
-        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
+        if: runner.os == 'macOS'
         run: |
           cp 'docs/tutorial/hướng dẫn cài đặt - macos.txt' dist/
-          cd dist && zip -r ../EditorVideoApp-${{ github.ref_name }}-${{ matrix.platform_name }}.zip .
+          cd dist && zip -r "../EditorVideoApp-${RELEASE_TAG}-${{ matrix.platform_name }}.zip" .
 
       - name: Package Linux ZIP
-        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
-        run: cd dist && zip -r ../EditorVideoApp-${{ github.ref_name }}-${{ matrix.platform_name }}.zip .
+        if: runner.os == 'Linux'
+        run: cd dist && zip -r "../EditorVideoApp-${RELEASE_TAG}-${{ matrix.platform_name }}.zip" .
 
-      - name: Publish ZIP to public release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish ZIP to repository release
         uses: softprops/action-gh-release@v2
         with:
-          repository: Akai1Shuichi/Video-Editor-AI-releases
-          token: ${{ secrets.RELEASE_TOKEN }}
-          tag_name: ${{ github.ref_name }}
-          name: Editor Video AI ${{ github.ref_name }}
-          target_commitish: master
-          files: EditorVideoApp-${{ github.ref_name }}-${{ matrix.platform_name }}.zip
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Editor Video AI ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          files: EditorVideoApp-${{ env.RELEASE_TAG }}-${{ matrix.platform_name }}.zip
           fail_on_unmatched_files: true
           body: |
-            Bản phát hành Editor Video AI ${{ github.ref_name }}.
+            Bản phát hành Editor Video AI ${{ env.RELEASE_TAG }}.
 
             Chọn đúng gói cài đặt cho hệ điều hành của bạn ở phần Assets bên dưới.
