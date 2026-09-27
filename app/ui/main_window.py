@@ -1,13 +1,12 @@
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QMessageBox,
     QPushButton,
     QStackedWidget,
     QTabWidget,
@@ -17,18 +16,20 @@ from PyQt6.QtWidgets import (
 
 from app import config
 from app.core.standalone_state import StandaloneStateStore
-from app.core.telemetry import TelemetryThread
 from app.ui.pricing_tab import PricingTab
+from app.ui.project_workspace import ProjectWorkspace
+from app.ui.settings_tab import SettingsTab
+from app.ui.tts_tab import TTSTab
 from app.ui.watermark_tab import WatermarkTab
 from app.ui.video_watermark_tab import VideoWatermarkTab
-from app.updater import APP_VERSION, UpdateCheckerThread, UpdateDialog
+from app.version import APP_VERSION
 
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 
 
 class MainWindow(QMainWindow):
-    """Cửa sổ công cụ gỡ watermark và Shop AI."""
+    """Cửa sổ chính của các công cụ và không gian dự án."""
 
     def __init__(self):
         super().__init__()
@@ -38,14 +39,8 @@ class MainWindow(QMainWindow):
 
         self.nav_buttons: list[QPushButton] = []
         self.standalone_state = StandaloneStateStore()
-        self.available_update_info: dict | None = None
         self.init_ui()
-        QTimer.singleShot(0, self._record_installation)
-        QTimer.singleShot(1500, self._check_update_automatically)
-
-    def _record_installation(self) -> None:
-        self._installation_telemetry = TelemetryThread("installation", self)
-        self._installation_telemetry.start()
+        self.update_api_status_badge()
 
     def init_ui(self):
         central_widget = QWidget()
@@ -57,7 +52,7 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        root_layout.addWidget(self._build_update_bar())
+        root_layout.addWidget(self._build_title_bar())
         workspace_layout = QHBoxLayout()
         workspace_layout.setContentsMargins(0, 0, 0, 0)
         workspace_layout.setSpacing(0)
@@ -73,11 +68,25 @@ class MainWindow(QMainWindow):
         self.watermark_pages.addTab(self.watermark_tab, "Gỡ watermark Ảnh")
         self.watermark_pages.addTab(self.video_watermark_tab, "Gỡ watermark Video")
         self.watermark_pages.currentChanged.connect(self._on_watermark_tab_changed)
+        self.project_workspace = ProjectWorkspace()
+        self.tts_tab = TTSTab()
+        self.tts_tab.configure_standalone(
+            self.standalone_state, config.TTS_DOWNLOADS_DIR
+        )
+        self.settings_tab = SettingsTab()
         self.pricing_tab = PricingTab()
         self.stack = QStackedWidget()
         self.stack.setObjectName("content_container")
+        self.stack.addWidget(self.project_workspace)
         self.stack.addWidget(self.watermark_pages)
+        self.stack.addWidget(self.tts_tab)
+        self.stack.addWidget(self.settings_tab)
         self.stack.addWidget(self.pricing_tab)
+        self.settings_tab.request_pricing.connect(lambda: self.switch_page(4))
+        self.settings_tab.api_key_saved.connect(self.update_api_status_badge)
+        self.settings_tab.account_updated.connect(self.on_account_updated)
+        self.tts_tab.account_updated.connect(self.on_account_updated)
+        self.project_workspace.tts_tab.account_updated.connect(self.on_account_updated)
         workspace_layout.addWidget(self.stack, stretch=1)
         root_layout.addLayout(workspace_layout, stretch=1)
         root_layout.addWidget(self._build_footer())
@@ -88,6 +97,26 @@ class MainWindow(QMainWindow):
         if self.watermark_pages.widget(index) is self.video_watermark_tab:
             self.video_watermark_tab.on_tab_activated()
 
+    def on_account_updated(self, info: dict) -> None:
+        credits = info.get("credit_balance", info.get("credits", 0))
+        self.tts_tab.set_credit_balance(credits)
+        self.project_workspace.tts_tab.set_credit_balance(credits)
+        self.settings_tab.update_account_info(info)
+        self.api_chip.setText(f"● Voice API: {credits:,} credits")
+        self.api_chip.setStyleSheet(
+            "background-color: #064e3b; border: 1px solid #065f46; "
+            "border-radius: 6px; padding: 4px 10px; color: #34d399; "
+            "font-size: 11px; font-weight: 600;"
+            if credits > 0 else ""
+        )
+
+    def update_api_status_badge(self, *_args) -> None:
+        self.api_chip.setStyleSheet("")
+        self.api_chip.setText(
+            "Voice API\nĐã cấu hình" if config.VIBI_API_KEY.strip()
+            else "Voice API\nChưa cấu hình"
+        )
+
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
@@ -96,14 +125,23 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 12, 0, 0)
         layout.setSpacing(4)
 
-        self.btn_nav_watermark = self.create_nav_btn("🍌  Gỡ watermark", 0)
-        self.btn_nav_pricing = self.create_nav_btn("🏷  Shop AI", 1)
+        self.btn_nav_project = self.create_nav_btn("📁  Dự án", 0)
+        self.btn_nav_watermark = self.create_nav_btn("🍌  Gỡ watermark", 1)
+        self.btn_nav_tts = self.create_nav_btn("🎙  Tạo Voice TTS", 2)
+        self.btn_nav_settings = self.create_nav_btn("⚙  Cài đặt", 3)
+        self.btn_nav_pricing = self.create_nav_btn("🏷  Shop AI", 4)
         for button in self.nav_buttons:
             layout.addWidget(button)
         layout.addStretch()
 
         sidebar_footer = QWidget()
         sidebar_footer.setObjectName("sidebar_footer")
+        footer_layout = QVBoxLayout(sidebar_footer)
+        footer_layout.setContentsMargins(12, 12, 12, 12)
+        self.api_chip = QLabel()
+        self.api_chip.setObjectName("api_chip")
+        self.api_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        footer_layout.addWidget(self.api_chip)
         layout.addWidget(sidebar_footer)
         return sidebar
 
@@ -118,12 +156,19 @@ class MainWindow(QMainWindow):
     def switch_page(self, index: int) -> None:
         if not 0 <= index < self.stack.count():
             return
+        previous_index = self.stack.currentIndex()
         self.stack.setCurrentIndex(index)
         for button_index, button in enumerate(self.nav_buttons):
             button.setChecked(button_index == index)
         self.standalone_state.save_last_page(index)
+        if index == 0 and (previous_index == 0 or not self.project_workspace.current_project):
+            self.project_workspace.show_project_list()
 
-    def _build_update_bar(self) -> QFrame:
+    def closeEvent(self, event) -> None:
+        self.tts_tab.flush_standalone_state()
+        super().closeEvent(event)
+
+    def _build_title_bar(self) -> QFrame:
         update_bar = QFrame()
         update_bar.setObjectName("update_bar")
         update_bar.setMinimumHeight(52)
@@ -136,19 +181,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
         layout.addStretch()
 
-        self.update_status_label = QLabel(f"v{APP_VERSION}  •  Chưa kiểm tra")
-        self.update_status_label.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
-        layout.addWidget(self.update_status_label)
-        self.install_update_button = QPushButton("Cập nhật ngay")
-        self.install_update_button.setObjectName("btn_primary")
-        self.install_update_button.setVisible(False)
-        self.install_update_button.clicked.connect(self._open_available_update)
-        layout.addWidget(self.install_update_button)
-        self.update_button = QPushButton("Kiểm tra cập nhật")
-        self.update_button.setObjectName("btn_subtle")
-        self.update_button.setToolTip("Kiểm tra bản cập nhật từ máy chủ S Editor")
-        self.update_button.clicked.connect(self._check_update_manually)
-        layout.addWidget(self.update_button)
+        version_label = QLabel(f"v{APP_VERSION}")
+        version_label.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
+        layout.addWidget(version_label)
         return update_bar
 
     def _build_footer(self) -> QFrame:
@@ -218,64 +253,3 @@ class MainWindow(QMainWindow):
         self.footer_creator.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
         layout.addWidget(self.footer_creator)
         return footer
-
-    def _check_update_automatically(self) -> None:
-        self._clear_available_update()
-        self._set_update_status("Đang kiểm tra cập nhật…", "#94a3b8")
-        self._auto_updater = UpdateCheckerThread(self)
-        self._auto_updater.update_available.connect(self._on_update_available)
-        self._auto_updater.no_update.connect(self._on_no_update)
-        self._auto_updater.check_failed.connect(self._on_update_check_failed)
-        self._auto_updater.start()
-
-    def _check_update_manually(self) -> None:
-        self.update_button.setEnabled(False)
-        self._clear_available_update()
-        self._set_update_status("Đang kiểm tra cập nhật…", "#94a3b8")
-        self._manual_updater = UpdateCheckerThread(self)
-        self._manual_updater.update_available.connect(self._on_update_available)
-        self._manual_updater.no_update.connect(
-            self._on_no_update
-        )
-        self._manual_updater.no_update.connect(
-            lambda message: QMessageBox.information(self, "Kiểm tra cập nhật", message)
-        )
-        self._manual_updater.check_failed.connect(
-            self._on_update_check_failed
-        )
-        self._manual_updater.check_failed.connect(
-            lambda message: QMessageBox.warning(self, "Kiểm tra cập nhật", message)
-        )
-        self._manual_updater.finished.connect(lambda: self.update_button.setEnabled(True))
-        self._manual_updater.start()
-
-    def _set_update_status(self, text: str, color: str) -> None:
-        self.update_status_label.setText(text)
-        self.update_status_label.setStyleSheet(
-            f"color: {color}; font-size: 12px; font-weight: 600;"
-        )
-
-    def _on_no_update(self, _message: str) -> None:
-        self._clear_available_update()
-        self._set_update_status(f"✓ Đã cập nhật (v{APP_VERSION})", "#4ade80")
-
-    def _on_update_available(self, update_info: dict) -> None:
-        self.available_update_info = update_info
-        self.install_update_button.setVisible(True)
-        self._set_update_status(f"↑ Có bản mới v{update_info['version']}", "#fbbf24")
-        self._show_update_dialog(update_info)
-
-    def _on_update_check_failed(self, _message: str) -> None:
-        self._clear_available_update()
-        self._set_update_status("Không thể kiểm tra cập nhật", "#f87171")
-
-    def _clear_available_update(self) -> None:
-        self.available_update_info = None
-        self.install_update_button.setVisible(False)
-
-    def _open_available_update(self) -> None:
-        if self.available_update_info:
-            self._show_update_dialog(self.available_update_info)
-
-    def _show_update_dialog(self, update_info: dict) -> None:
-        UpdateDialog(update_info, self).exec()

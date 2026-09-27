@@ -1,8 +1,8 @@
 from pathlib import Path
 from typing import List, Optional
 
-from PyQt6.QtCore import QThread, Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QColor, QDesktopServices
+from PyQt6.QtCore import QThread, Qt, pyqtSignal
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QProgressBar, QTableWidget, QTableWidgetItem, QHeaderView,
@@ -11,8 +11,6 @@ from PyQt6.QtWidgets import (
 
 from app.core.platform_utils import open_path
 from app.core.standalone_state import build_output_folder_name, resolve_new_output_folder
-from app.core.telemetry import TelemetryThread, should_record_watermark
-from app.core.trial_api import TrialClient, VIDEO_WATERMARK_TYPE
 from app import config
 from app.core.video_watermark_remover import VideoWatermarkRemover
 
@@ -54,17 +52,6 @@ class VideoWatermarkWorker(QThread):
             self.finished_all.emit(total, success_count)
 
 
-class TrialCheckThread(QThread):
-    checked = pyqtSignal(bool)
-    failed = pyqtSignal(str)
-
-    def run(self) -> None:
-        try:
-            self.checked.emit(TrialClient().check(VIDEO_WATERMARK_TYPE))
-        except Exception as exc:
-            self.failed.emit(str(exc))
-
-
 class VideoWatermarkTab(QWidget):
     """Batch video removal UI, deliberately aligned with the image workflow."""
     video_filter = "Video (*.mp4 *.mov *.mkv *.webm)"
@@ -78,26 +65,12 @@ class VideoWatermarkTab(QWidget):
         self.output_dir: Optional[Path] = config.VIDEO_WATERMARK_DOWNLOADS_DIR
         self.current_run_dir: Optional[Path] = None
         self.worker: Optional[VideoWatermarkWorker] = None
-        self._trial_check_thread: Optional[TrialCheckThread] = None
-        self._trial_check_pending = False
-        self._trial_allowed: Optional[bool] = None
-        self._start_after_trial_check = False
-        self._telemetry_threads: List[TelemetryThread] = []
         self._build_ui()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
-        self.trial_notice = QLabel("Tính năng gỡ watermark video hiện không khả dụng.")
-        self.trial_notice.setWordWrap(True)
-        self.trial_notice.setStyleSheet(
-            "background-color: #241d12; color: #f4c77b; "
-            "border-left: 3px solid #d99532; border-radius: 6px; "
-            "padding: 11px 14px; font-size: 13px; font-weight: 600;"
-        )
-        self.trial_notice.hide()
-        layout.addWidget(self.trial_notice)
         title = QLabel("Gỡ watermark Video")
         title.setObjectName("tool_title")
         layout.addWidget(title)
@@ -297,8 +270,6 @@ class VideoWatermarkTab(QWidget):
         if not self.worker or not self.worker.isRunning():
             self.start_button.setEnabled(
                 bool(self.selected_files)
-                and not self._trial_check_pending
-                and self._trial_allowed is not False
             )
             self.remove_button.setEnabled(bool(self.table.selectionModel().selectedRows()))
             self.clear_button.setEnabled(bool(self.selected_files))
@@ -308,90 +279,10 @@ class VideoWatermarkTab(QWidget):
         if not self.selected_files:
             QMessageBox.warning(self, "Chưa có video", "Vui lòng chọn ít nhất một video.")
             return
-        self._check_trial(start_after_check=True)
+        self._begin_processing()
 
     def on_tab_activated(self) -> None:
-        """Check availability whenever the video tab is selected."""
-        self._check_trial(start_after_check=False)
-
-    def _set_trial_locked(self, locked: bool) -> None:
-        self.controls_card.setEnabled(not locked)
-        self.controls_card.setStyleSheet(
-            """
-            QFrame#watermark_controls { background-color: #101114; }
-            QFrame#watermark_controls QLabel { color: #64748b; }
-            QFrame#watermark_controls QTableWidget {
-                background-color: #101114; color: #64748b; border-color: #1f2028;
-            }
-            QFrame#watermark_controls QHeaderView::section {
-                background-color: #14151a; color: #64748b;
-            }
-            QFrame#watermark_controls QPushButton {
-                background-color: #14151a; color: #4b5563; border-color: #1f2028;
-            }
-            QFrame#watermark_controls QLineEdit,
-            QFrame#watermark_controls QComboBox {
-                background-color: #101114; color: #4b5563; border-color: #1f2028;
-            }
-            """ if locked else ""
-        )
-        self.trial_notice.setVisible(locked and not self._trial_check_pending)
-        self.resolution_notice.setVisible(not locked)
-
-    def _check_trial(self, *, start_after_check: bool) -> None:
-        if self._trial_check_pending:
-            self._start_after_trial_check |= start_after_check
-            return
-        self._trial_check_pending = True
-        self._start_after_trial_check = start_after_check
-        self._set_trial_locked(True)
-        self.status.show()
-        self.status.setText("Đang kiểm tra quyền dùng thử…")
-        self._trial_check_thread = TrialCheckThread(self)
-        self._trial_check_thread.checked.connect(self._on_trial_checked)
-        self._trial_check_thread.failed.connect(self._on_trial_check_failed)
-        self._trial_check_thread.start()
-
-    def _on_trial_checked(self, is_trial: bool) -> None:
-        self._trial_check_pending = False
-        self._trial_allowed = is_trial
-        start_after_check = self._start_after_trial_check
-        self._start_after_trial_check = False
-        self._set_trial_locked(not is_trial)
-        if not is_trial:
-            if self.worker and self.worker.isRunning():
-                self.worker.cancel()
-            self.status.hide()
-            self._update_controls()
-            message = QMessageBox(self)
-            message.setIcon(QMessageBox.Icon.Information)
-            message.setWindowTitle("Thông báo")
-            message.setText("Tính năng gỡ watermark video hiện không khả dụng. \nVui lòng cập nhật phiên bản mới nhất hoặc nhắn Zalo để được hỗ trợ.")
-            zalo_button = message.addButton("Nhắn Zalo", QMessageBox.ButtonRole.ActionRole)
-            message.addButton("Đóng", QMessageBox.ButtonRole.RejectRole)
-            message.exec()
-            if message.clickedButton() is zalo_button:
-                QDesktopServices.openUrl(QUrl("https://zalo.me/g/2h4r4fbobrg66e9haa3q"))
-            return
-        if self.worker and self.worker.isRunning():
-            self._set_running(True)
-        if start_after_check:
-            self._begin_processing()
-        else:
-            self.status.setText(
-                f"Đã nạp {len(self.selected_files)} video." if self.selected_files
-                else "Chọn video để bắt đầu."
-            )
-            self._update_controls()
-
-    def _on_trial_check_failed(self, detail: str) -> None:
-        self._trial_check_pending = False
-        self._trial_allowed = False
-        self._start_after_trial_check = False
-        self._set_trial_locked(True)
-        self.status.hide()
-        self._update_controls()
-        QMessageBox.warning(self, "Không thể kiểm tra dùng thử", f"Vui lòng thử lại.\n{detail}")
+        """Video processing is available locally without a trial check."""
 
     def _begin_processing(self) -> None:
         output_root = self.output_dir or config.VIDEO_WATERMARK_DOWNLOADS_DIR
@@ -427,16 +318,6 @@ class VideoWatermarkTab(QWidget):
         self._set_running(False)
         self.status.setText(f"Hoàn tất: {success_count}/{total} video.")
         self.output_name.setText(build_output_folder_name("clean_video"))
-        if should_record_watermark(
-            success_count=success_count,
-            cancelled=bool(self.worker and self.worker._cancelled),
-        ):
-            telemetry_thread = TelemetryThread("video_watermark", self)
-            self._telemetry_threads.append(telemetry_thread)
-            telemetry_thread.finished.connect(
-                lambda: self._telemetry_threads.remove(telemetry_thread)
-            )
-            telemetry_thread.start()
 
     def cancel_processing(self) -> None:
         if self.worker and self.worker.isRunning():

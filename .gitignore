@@ -69,5 +69,6 @@ tests/*
 !tests/test_video_watermark_ui.py
 !tests/test_veo3_text_mask.py
 !tests/test_video_output_quality.py
+!tests/test_restored_features.py
 build/
 dist/

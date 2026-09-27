@@ -6,7 +6,6 @@ from typing import Optional, List, Dict, Any, Tuple, Callable
 import requests
 
 from app import config
-from app.core.telemetry import api_request
 
 class VibiAPIError(Exception):
     """Lỗi phát sinh khi gọi Vibi API."""
@@ -29,9 +28,7 @@ class VibiClient:
         return bool(self.api_key and len(self.api_key.strip()) > 0)
 
     def _request(self, method: str, url: str, **kwargs):
-        return api_request(
-            method, url, session=self.session, log_body=False, log_response=False, **kwargs
-        )
+        return self.session.request(method, url, **kwargs)
 
     def _get_headers(self) -> Dict[str, str]:
         """Tạo headers chứa authentication xi-api-key."""

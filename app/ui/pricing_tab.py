@@ -1,17 +1,29 @@
 from pathlib import Path
 from typing import Any, Optional
+import requests
 
 from PyQt6.QtCore import Qt, QThread, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices, QPixmap
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from app.core.telemetry import TelemetryThread, api_request
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 PRODUCTS_URL = "https://api.botocit.com/api/v2/telegram-buyer/products"
 DEFAULT_PRODUCTS = (
     {
-        "label": "Google Pro 18 tháng",
+        "label": "🔥 Google Pro 18 tháng",
+        "price": None,
+        "old_price": None,
+        "sale": 30,
+    },
+    {
+        "label": "🔥 ElevenLabs Redeem 131K Credit",
+        "price": None,
+        "old_price": None,
+        "sale": 30,
+    },
+    {
+        "label": "🔥 ElevenLabs Redeem 300K Credit",
         "price": None,
         "old_price": None,
         "sale": 30,
@@ -33,6 +45,10 @@ def format_vnd_price(value: Any) -> str:
         return s if s.endswith("đ") else f"{s}đ"
 
 
+def _offer_key(label: Any) -> str:
+    return str(label or "").strip().removeprefix("🔥").strip().casefold()
+
+
 class PricingFetchThread(QThread):
     """Thread tải bảng giá động từ API."""
     result_ready = pyqtSignal(bool, object, str)
@@ -43,9 +59,7 @@ class PricingFetchThread(QThread):
 
     def run(self):
         try:
-            res = api_request(
-                "GET", self.url, headers={"Accept": "application/json"}, timeout=10
-            )
+            res = requests.get(self.url, headers={"Accept": "application/json"}, timeout=10)
             res.raise_for_status()
             data = res.json()
             self.result_ready.emit(True, data, "")
@@ -62,7 +76,6 @@ class PricingTab(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.pricing_url = api_url or PRODUCTS_URL
         self.worker: Optional[PricingFetchThread] = None
-        self._telemetry_threads: list[TelemetryThread] = []
         self.init_ui()
         self.refresh_pricing()
 
@@ -131,12 +144,6 @@ class PricingTab(QWidget):
         layout.addStretch()
 
     def _open_telegram_bot(self, url: str) -> None:
-        telemetry_thread = TelemetryThread("shop_ai", self)
-        self._telemetry_threads.append(telemetry_thread)
-        telemetry_thread.finished.connect(
-            lambda: self._telemetry_threads.remove(telemetry_thread)
-        )
-        telemetry_thread.start()
         QDesktopServices.openUrl(QUrl(url))
 
     def showEvent(self, event):
@@ -157,6 +164,7 @@ class PricingTab(QWidget):
         if success:
             self.update_pricing_data(data)
         else:
+            self.update_pricing_data(None)
             self.lbl_status.setText("Không tải được sản phẩm. Vui lòng thử lại sau.")
             self.lbl_status.show()
 
@@ -164,11 +172,15 @@ class PricingTab(QWidget):
         """Render từng gói giá từ mảng API, đồng thời hỗ trợ payload JSON cũ."""
         offers = self._extract_offers(data)
         missing_defaults = []
-        if isinstance(data, list):
-            labels = {str(offer.get("label") or "").strip().casefold() for offer in offers}
+        if (
+            data is None
+            or isinstance(data, list)
+            or (isinstance(data, dict) and isinstance(data.get("items"), list))
+        ):
+            labels = {_offer_key(offer.get("label")) for offer in offers}
             missing_defaults = [
                 product for product in DEFAULT_PRODUCTS
-                if product["label"].casefold() not in labels
+                if _offer_key(product["label"]) not in labels
             ]
             offers = missing_defaults + offers
         self._clear_offers()
@@ -204,7 +216,10 @@ class PricingTab(QWidget):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(10)
 
-        label = QLabel(str(offer.get("label", "")).strip())
+        label_text = str(offer.get("label", "")).strip()
+        if _offer_key(label_text) == "google pro 18 tháng":
+            label_text = "🔥 Google Pro 18 tháng"
+        label = QLabel(label_text)
         label.setObjectName("offer_label")
         layout.addWidget(label)
 
