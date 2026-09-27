@@ -50,7 +50,7 @@ class StandaloneStateStore:
     WATERMARK_KEY = "standalone/watermark"
     TTS_KEY = "standalone/tts"
     LAST_PAGE_KEY = "window/last_sidebar_page"
-    VALID_PAGES = range(4)
+    VALID_PAGES = range(5)
 
     def __init__(self, settings: Optional[QSettings] = None):
         self.settings = settings or QSettings()

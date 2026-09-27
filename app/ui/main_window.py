@@ -17,6 +17,9 @@ from PyQt6.QtWidgets import (
 from app import config
 from app.core.standalone_state import StandaloneStateStore
 from app.ui.pricing_tab import PricingTab
+from app.ui.project_workspace import ProjectWorkspace
+from app.ui.settings_tab import SettingsTab
+from app.ui.tts_tab import TTSTab
 from app.ui.watermark_tab import WatermarkTab
 from app.ui.video_watermark_tab import VideoWatermarkTab
 from app.version import APP_VERSION
@@ -26,7 +29,7 @@ ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
 
 
 class MainWindow(QMainWindow):
-    """Cửa sổ công cụ gỡ watermark và Shop AI."""
+    """Cửa sổ chính của các công cụ và không gian dự án."""
 
     def __init__(self):
         super().__init__()
@@ -37,6 +40,7 @@ class MainWindow(QMainWindow):
         self.nav_buttons: list[QPushButton] = []
         self.standalone_state = StandaloneStateStore()
         self.init_ui()
+        self.update_api_status_badge()
 
     def init_ui(self):
         central_widget = QWidget()
@@ -64,11 +68,25 @@ class MainWindow(QMainWindow):
         self.watermark_pages.addTab(self.watermark_tab, "Gỡ watermark Ảnh")
         self.watermark_pages.addTab(self.video_watermark_tab, "Gỡ watermark Video")
         self.watermark_pages.currentChanged.connect(self._on_watermark_tab_changed)
+        self.project_workspace = ProjectWorkspace()
+        self.tts_tab = TTSTab()
+        self.tts_tab.configure_standalone(
+            self.standalone_state, config.TTS_DOWNLOADS_DIR
+        )
+        self.settings_tab = SettingsTab()
         self.pricing_tab = PricingTab()
         self.stack = QStackedWidget()
         self.stack.setObjectName("content_container")
+        self.stack.addWidget(self.project_workspace)
         self.stack.addWidget(self.watermark_pages)
+        self.stack.addWidget(self.tts_tab)
+        self.stack.addWidget(self.settings_tab)
         self.stack.addWidget(self.pricing_tab)
+        self.settings_tab.request_pricing.connect(lambda: self.switch_page(4))
+        self.settings_tab.api_key_saved.connect(self.update_api_status_badge)
+        self.settings_tab.account_updated.connect(self.on_account_updated)
+        self.tts_tab.account_updated.connect(self.on_account_updated)
+        self.project_workspace.tts_tab.account_updated.connect(self.on_account_updated)
         workspace_layout.addWidget(self.stack, stretch=1)
         root_layout.addLayout(workspace_layout, stretch=1)
         root_layout.addWidget(self._build_footer())
@@ -79,6 +97,26 @@ class MainWindow(QMainWindow):
         if self.watermark_pages.widget(index) is self.video_watermark_tab:
             self.video_watermark_tab.on_tab_activated()
 
+    def on_account_updated(self, info: dict) -> None:
+        credits = info.get("credit_balance", info.get("credits", 0))
+        self.tts_tab.set_credit_balance(credits)
+        self.project_workspace.tts_tab.set_credit_balance(credits)
+        self.settings_tab.update_account_info(info)
+        self.api_chip.setText(f"● Voice API: {credits:,} credits")
+        self.api_chip.setStyleSheet(
+            "background-color: #064e3b; border: 1px solid #065f46; "
+            "border-radius: 6px; padding: 4px 10px; color: #34d399; "
+            "font-size: 11px; font-weight: 600;"
+            if credits > 0 else ""
+        )
+
+    def update_api_status_badge(self, *_args) -> None:
+        self.api_chip.setStyleSheet("")
+        self.api_chip.setText(
+            "Voice API\nĐã cấu hình" if config.VIBI_API_KEY.strip()
+            else "Voice API\nChưa cấu hình"
+        )
+
     def _build_sidebar(self) -> QFrame:
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
@@ -87,14 +125,23 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 12, 0, 0)
         layout.setSpacing(4)
 
-        self.btn_nav_watermark = self.create_nav_btn("🍌  Gỡ watermark", 0)
-        self.btn_nav_pricing = self.create_nav_btn("🏷  Shop AI", 1)
+        self.btn_nav_project = self.create_nav_btn("📁  Dự án", 0)
+        self.btn_nav_watermark = self.create_nav_btn("🍌  Gỡ watermark", 1)
+        self.btn_nav_tts = self.create_nav_btn("🎙  Tạo Voice TTS", 2)
+        self.btn_nav_settings = self.create_nav_btn("⚙  Cài đặt", 3)
+        self.btn_nav_pricing = self.create_nav_btn("🏷  Shop AI", 4)
         for button in self.nav_buttons:
             layout.addWidget(button)
         layout.addStretch()
 
         sidebar_footer = QWidget()
         sidebar_footer.setObjectName("sidebar_footer")
+        footer_layout = QVBoxLayout(sidebar_footer)
+        footer_layout.setContentsMargins(12, 12, 12, 12)
+        self.api_chip = QLabel()
+        self.api_chip.setObjectName("api_chip")
+        self.api_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        footer_layout.addWidget(self.api_chip)
         layout.addWidget(sidebar_footer)
         return sidebar
 
@@ -109,10 +156,17 @@ class MainWindow(QMainWindow):
     def switch_page(self, index: int) -> None:
         if not 0 <= index < self.stack.count():
             return
+        previous_index = self.stack.currentIndex()
         self.stack.setCurrentIndex(index)
         for button_index, button in enumerate(self.nav_buttons):
             button.setChecked(button_index == index)
         self.standalone_state.save_last_page(index)
+        if index == 0 and (previous_index == 0 or not self.project_workspace.current_project):
+            self.project_workspace.show_project_list()
+
+    def closeEvent(self, event) -> None:
+        self.tts_tab.flush_standalone_state()
+        super().closeEvent(event)
 
     def _build_title_bar(self) -> QFrame:
         update_bar = QFrame()

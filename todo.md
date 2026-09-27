@@ -11,11 +11,12 @@
 ## Giai đoạn 2 — Tạo Voice TTS
 
 - [ ] Giữ `app/ui/tts_tab.py`, `app/ui/voice_lookup_tab.py` và `app/core/vibi_client.py` ngoài entry point của giai đoạn 1.
-- [ ] Khi sẵn sàng, đăng ký TTS trong `MainWindow`, mở lại Settings/Pricing và kiểm thử API Vibi.
+- [x] Đăng ký TTS trong `MainWindow` và mở lại Settings/Pricing.
+- [ ] Kiểm thử API Vibi với key hợp lệ.
 - [ ] Bổ sung các dependency TTS cần thiết vào cấu hình build rồi phát hành bản nâng cấp.
 
 ## Giai đoạn 3 — Quản lý dự án và ghép video
 
 - [ ] Giữ `app/ui/project_workspace.py`, `app/ui/scene_tab.py`, `app/ui/video_tab.py` và các core project/video ngoài entry point trước giai đoạn 3.
-- [ ] Khi sẵn sàng, đăng ký Project Workspace và luồng Watermark → TTS → Scene → Video.
+- [x] Đăng ký Project Workspace và luồng Watermark → TTS → Scene → Video trong giao diện.
 - [ ] Bundle `imageio-ffmpeg` lại cho bản có ghép video; kiểm thử xuất MP4 trên ba hệ điều hành.
