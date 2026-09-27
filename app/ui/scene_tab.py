@@ -25,7 +25,6 @@ class SceneTab(QWidget):
     """Bước nhập và kiểm tra kịch bản phân đoạn cảnh."""
 
     scene_path_changed = pyqtSignal(str)
-    continue_to_video = pyqtSignal()
     scenes_updated = pyqtSignal()
 
     TEXT_MODE = "text"
@@ -143,15 +142,6 @@ class SceneTab(QWidget):
         self.lbl_status.setWordWrap(True)
         panel_layout.addWidget(self.lbl_status)
 
-        actions = QHBoxLayout()
-        actions.addStretch()
-        self.btn_continue = QPushButton("Tiếp tục xuất video  →")
-        self.btn_continue.setObjectName("btn_primary")
-        self.btn_continue.setEnabled(False)
-        self.btn_continue.clicked.connect(self._continue)
-        actions.addWidget(self.btn_continue)
-        panel_layout.addLayout(actions)
-
         root.addWidget(panel, stretch=1)
 
     def set_project(self, project):
@@ -266,27 +256,6 @@ class SceneTab(QWidget):
         self.lbl_status.setObjectName("meta_label" if valid else "field_error")
         self.lbl_status.style().unpolish(self.lbl_status)
         self.lbl_status.style().polish(self.lbl_status)
-        self.btn_continue.setEnabled(valid)
-
-    def _continue(self):
-        if self.combo_mode.currentData() == self.TEXT_MODE:
-            if self._text_data is None or not self.project:
-                return
-            try:
-                self.project.scenes_path.write_text(
-                    json.dumps(self._text_data, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-                self.project.save_metadata()
-            except OSError as exc:
-                self._set_status(f"Không thể lưu scenes.json: {exc}", False)
-                return
-            self.scene_path_changed.emit(str(self.project.scenes_path.resolve()))
-        elif self._valid_file_path:
-            self.scene_path_changed.emit(str(self._valid_file_path))
-        else:
-            return
-        self.continue_to_video.emit()
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         urls = event.mimeData().urls() if event.mimeData().hasUrls() else []

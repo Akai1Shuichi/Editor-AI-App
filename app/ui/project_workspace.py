@@ -135,7 +135,6 @@ class ProjectWorkspace(QWidget):
         self.tts_tab.voice_generated.connect(self._on_voice_generated)
         self.scene_tab.scene_path_changed.connect(self.video_tab.set_json_file)
         self.scene_tab.scenes_updated.connect(self.refresh_pipeline_badges)
-        self.scene_tab.continue_to_video.connect(self._on_scene_continue_to_video)
         self.video_tab.video_rendered.connect(self._on_video_rendered)
         self.inner_tabs.currentChanged.connect(self._on_inner_tab_changed)
 
@@ -270,11 +269,6 @@ class ProjectWorkspace(QWidget):
                 "Đã lưu dự án",
                 f"Đã lưu thành công toàn bộ dữ liệu và cấu hình cho dự án “{self.current_project.name}”."
             )
-
-    def _on_scene_continue_to_video(self):
-        self.video_tab.analyze_timeline()
-        self.inner_tabs.setCurrentIndex(3)
-        self.refresh_pipeline_badges()
 
     def _on_project_deleted(self, slug: str):
         if self.current_project and self.current_project.slug == slug:
