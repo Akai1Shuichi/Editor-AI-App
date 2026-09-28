@@ -406,6 +406,24 @@ QPushButton#btn_primary:pressed {
     background-color: #1e40af;
 }
 
+QPushButton#btn_tutorial {
+    background-color: #291b20;
+    border: 1px solid #8f3c48;
+    color: #ffe4e6;
+    font-weight: 700;
+    padding: 7px 12px;
+}
+
+QPushButton#btn_tutorial:hover {
+    background-color: #412128;
+    border-color: #ef4444;
+    color: #ffffff;
+}
+
+QPushButton#btn_tutorial:pressed {
+    background-color: #5b2630;
+}
+
 QPushButton#btn_buy_api {
     background-color: #2563eb;
     border: 1px solid #1d4ed8;

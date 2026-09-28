@@ -2,8 +2,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from PyQt6.QtCore import QEvent, Qt, pyqtSignal
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import QEvent, QSize, Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QColor, QDesktopServices, QIcon
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -24,6 +24,9 @@ from PyQt6.QtWidgets import (
 
 from app.core.project_manager import Project, ProjectManager, slugify
 from app.core.platform_utils import open_path
+
+YOUTUBE_TUTORIAL_URL = "https://youtu.be/SwU7mc58AXA?si=MHx7uoIvZFKHL430"
+YOUTUBE_ICON = Path(__file__).resolve().parent.parent / "assets" / "icons" / "youtube.svg"
 
 
 class NewProjectDialog(QDialog):
@@ -176,6 +179,16 @@ class ProjectTab(QWidget):
         create.clicked.connect(self.show_new_project_dialog)
         header.addWidget(create)
         layout.addLayout(header)
+
+        tutorial_button = QPushButton("Hướng dẫn tạo video hoạt hình 2D Người Que  ↗")
+        tutorial_button.setObjectName("btn_tutorial")
+        tutorial_button.setIcon(QIcon(str(YOUTUBE_ICON)))
+        tutorial_button.setIconSize(QSize(22, 18))
+        tutorial_button.setToolTip("Xem video hướng dẫn trên YouTube")
+        tutorial_button.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl(YOUTUBE_TUTORIAL_URL))
+        )
+        layout.addWidget(tutorial_button, alignment=Qt.AlignmentFlag.AlignLeft)
 
         controls = QHBoxLayout()
         self.lbl_count = QLabel("0 dự án")
