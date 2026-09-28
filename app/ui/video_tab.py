@@ -75,6 +75,7 @@ class VideoTab(QWidget):
         self.total_audio_duration: float = 0.0
         self.last_output_video: Optional[Path] = None
         self.project = None
+        self._json_data = None
 
         self.init_ui()
         self.auto_detect_defaults()
@@ -481,6 +482,7 @@ class VideoTab(QWidget):
             self.last_output_video = None
             self.panel_result.setVisible(False)
         self.project = project
+        self._json_data = None
         if not project:
             if hasattr(self, "lbl_project_badge"):
                 self.lbl_project_badge.setText("📁 Chưa chọn dự án")
@@ -519,7 +521,7 @@ class VideoTab(QWidget):
         else:
             self.txt_srt_file.setText("")
 
-        # File JSON chỉ được nhận sau khi khách nhập ở bước 3.
+        # Kịch bản JSON chỉ được nhận sau khi nhập ở bước 3.
         self.txt_json_file.setText("")
 
         # 5. Tỉ lệ khung hình
@@ -578,9 +580,13 @@ class VideoTab(QWidget):
         self.lbl_status.setText("Đã nạp file Voice & SRT vừa tạo từ tab TTS.")
         self.analyze_timeline()
 
-    def set_json_file(self, json_path: str):
-        """Nhận file kịch bản đã chọn ở bước 3."""
-        self.txt_json_file.setText(json_path)
+    def set_json_file(self, json_source):
+        """Nhận nội dung JSON hoặc đường dẫn file kịch bản từ bước 3."""
+        self._json_data = None if isinstance(json_source, str) else json_source
+        self.txt_json_file.setText(json_source if isinstance(json_source, str) else "")
+        self.current_timeline = []
+        self.table.setRowCount(0)
+        self.on_input_changed()
 
     def browse_image_dir(self):
         init_dir = self.txt_image_dir.text().strip() or str(config.DOWNLOADS_DIR)
@@ -654,14 +660,13 @@ class VideoTab(QWidget):
         if not srt_file_str or not Path(srt_file_str).is_file():
             self.lbl_status.setText("Chưa chọn hoặc file SRT không hợp lệ.")
             return False
-        if not json_file_str or not Path(json_file_str).is_file():
+        if self._json_data is None and (not json_file_str or not Path(json_file_str).is_file()):
             self.lbl_status.setText("Chưa chọn hoặc file JSON kịch bản không hợp lệ.")
             return False
 
         image_dir = Path(img_dir_str)
         audio_path = Path(aud_file_str)
         srt_path = Path(srt_file_str)
-        json_path = Path(json_file_str)
 
         try:
             ffmpeg_exe = video_creator.get_ffmpeg_path()
@@ -673,7 +678,10 @@ class VideoTab(QWidget):
             self.lbl_status.setText("Đang đọc phụ đề và đo thời lượng âm thanh...")
             subtitles = video_creator.parse_srt_file(srt_path)
             self.total_audio_duration = video_creator.get_audio_duration(ffmpeg_exe, audio_path)
-            scenes = video_creator.parse_json_mapping(json_path, sorted(list(subtitles.keys())))
+            if self._json_data is not None:
+                scenes = video_creator.parse_json_data(self._json_data, sorted(subtitles))
+            else:
+                scenes = video_creator.parse_json_mapping(Path(json_file_str), sorted(subtitles))
             timeline = video_creator.compute_timeline(scenes, subtitles, self.total_audio_duration, image_dir)
         except Exception as e:
             QMessageBox.warning(self, "Lỗi phân tích", f"Không thể phân tích dữ liệu: {e}")

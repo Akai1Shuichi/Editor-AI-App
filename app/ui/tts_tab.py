@@ -184,7 +184,6 @@ class VoiceSelectorComboBox(QComboBox):
 class TTSTab(QWidget):
     """Tab tạo giọng ElevenLabs từ văn bản - Thiết kế gọn gàng, súc tích."""
     request_voice_lookup = pyqtSignal()
-    send_to_video = pyqtSignal(str, str)
     voice_generated = pyqtSignal(str, str)
     account_updated = pyqtSignal(dict)
 
@@ -235,7 +234,6 @@ class TTSTab(QWidget):
         self.standalone_output_dir.mkdir(parents=True, exist_ok=True)
         self.tool_header.setVisible(True)
         self.lbl_project_badge.setVisible(False)
-        self.btn_to_video.setVisible(False)
         self.output_name_controls.setVisible(True)
         self.btn_choose_output.setVisible(True)
         self.edit_output_name.setText(
@@ -363,7 +361,6 @@ class TTSTab(QWidget):
             self.lbl_player_file.setText("Chưa có file âm thanh")
             self.btn_play_pause.setEnabled(False)
             self.btn_stop.setEnabled(False)
-            self.btn_to_video.setEnabled(False)
             self.slider_player.setRange(0, 0)
             self.loading_spinner.stop()
         self.project = project
@@ -426,7 +423,6 @@ class TTSTab(QWidget):
             self.player.setSource(QUrl.fromLocalFile(str(voice)))
             self.btn_play_pause.setEnabled(True)
             self.btn_stop.setEnabled(True)
-            self.btn_to_video.setEnabled(True)
             self.lbl_status.setText("✓ Đã nạp file Voice & Phụ đề sẵn có của dự án.")
 
     def init_ui(self):
@@ -726,14 +722,6 @@ class TTSTab(QWidget):
         p_info_bar.addWidget(self.lbl_player_file)
         p_info_bar.addStretch()
 
-        self.btn_to_video = QPushButton("→  Kịch Bản Cảnh")
-        self.btn_to_video.setObjectName("btn_subtle")
-        self.btn_to_video.setToolTip(
-            "Chuyển file Voice & phụ đề SRT sang bước Kịch bản cảnh trước khi xuất video"
-        )
-        self.btn_to_video.setEnabled(False)
-        self.btn_to_video.clicked.connect(self._on_to_video_clicked)
-        p_info_bar.addWidget(self.btn_to_video)
         pp_layout.addLayout(p_info_bar)
 
         # Scrubber bar
@@ -1083,7 +1071,6 @@ class TTSTab(QWidget):
             self.btn_play_pause.setEnabled(True)
             self.btn_stop.setEnabled(True)
             self.btn_play_pause.setText("Phát")
-            self.btn_to_video.setEnabled(True)
 
             # Tự động cập nhật sang tab xuất video ngay khi tạo xong
             srt_param = str(resolved_srt.resolve()) if resolved_srt else ""
@@ -1112,13 +1099,6 @@ class TTSTab(QWidget):
                 self.lbl_status.setText(f"Lỗi: {msg}")
                 self.loading_spinner.stop()
                 QMessageBox.critical(self, "Lỗi tạo giọng", msg)
-
-    def _on_to_video_clicked(self):
-        if self.current_audio_path:
-            srt_p = str(self.current_srt_path) if self.current_srt_path else ""
-            if not srt_p and self.current_audio_path.with_suffix(".srt").exists():
-                srt_p = str(self.current_audio_path.with_suffix(".srt").resolve())
-            self.send_to_video.emit(str(self.current_audio_path), srt_p)
 
     def toggle_play_pause(self):
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:

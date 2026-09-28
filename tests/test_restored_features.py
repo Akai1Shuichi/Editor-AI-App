@@ -5,7 +5,7 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtWidgets import QLabel
+from PyQt6.QtWidgets import QLabel, QPushButton
 
 from app.ui.main_window import MainWindow
 from app.ui.pricing_tab import PricingTab
@@ -31,6 +31,10 @@ class RestoredFeaturesTests(unittest.TestCase):
             self.assertIs(window.stack.widget(0), window.project_workspace)
             self.assertIs(window.stack.widget(2), window.tts_tab)
             self.assertIsNotNone(window.tts_tab.standalone_store)
+            self.assertFalse(any(
+                "Kịch Bản Cảnh" in button.text()
+                for button in window.project_workspace.tts_tab.findChildren(QPushButton)
+            ))
 
             for index, button in enumerate(window.nav_buttons):
                 button.click()

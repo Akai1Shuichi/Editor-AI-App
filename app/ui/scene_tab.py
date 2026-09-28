@@ -24,7 +24,7 @@ from app.core import video_creator
 class SceneTab(QWidget):
     """Bước nhập và kiểm tra kịch bản phân đoạn cảnh."""
 
-    scene_path_changed = pyqtSignal(str)
+    scene_path_changed = pyqtSignal(object)
     scenes_updated = pyqtSignal()
 
     TEXT_MODE = "text"
@@ -215,8 +215,7 @@ class SceneTab(QWidget):
                         self.project.save_metadata()
                     except Exception:
                         pass
-                if self.project and self.project.scenes_path.exists():
-                    self.scene_path_changed.emit(str(self.project.scenes_path.resolve()))
+                self.scene_path_changed.emit(data)
                 self.scenes_updated.emit()
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
             self._set_status(f"JSON không hợp lệ: {exc}", False)

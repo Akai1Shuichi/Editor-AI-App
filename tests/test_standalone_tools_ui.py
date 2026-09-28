@@ -395,7 +395,10 @@ class StandaloneToolsUiTests(unittest.TestCase):
             self.assertEqual(tab.combo_model.currentText(), "eleven_flash_v2_5")
             self.assertEqual(tab.slider_sp.value(), 108)
             self.assertFalse(tab.chk_srt.isChecked())
-            self.assertTrue(tab.btn_to_video.isHidden())
+            self.assertFalse(any(
+                "Kịch Bản Cảnh" in button.text()
+                for button in tab.findChildren(QPushButton)
+            ))
             self.assertEqual(tab.standalone_output_dir, output_dir)
             self.assertRegex(
                 tab.edit_output_name.text(), r"^voice_\d{8}_\d{6}$"

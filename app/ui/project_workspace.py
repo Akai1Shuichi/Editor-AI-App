@@ -131,7 +131,6 @@ class ProjectWorkspace(QWidget):
         self.stack.addWidget(self.workspace_page)
 
         self.watermark_tab.images_updated.connect(self.refresh_pipeline_badges)
-        self.tts_tab.send_to_video.connect(self._on_tts_send_to_video)
         self.tts_tab.voice_generated.connect(self._on_voice_generated)
         self.scene_tab.scene_path_changed.connect(self.video_tab.set_json_file)
         self.scene_tab.scenes_updated.connect(self.refresh_pipeline_badges)
@@ -192,11 +191,6 @@ class ProjectWorkspace(QWidget):
             return
         self.inner_tabs.setCurrentIndex(max(0, min(3, step_index - 1)))
         self.stack.setCurrentIndex(self.WORKSPACE_PAGE)
-
-    def _on_tts_send_to_video(self, audio_path: str, srt_path: str):
-        self.video_tab.set_audio_and_srt(audio_path, srt_path)
-        self.inner_tabs.setCurrentIndex(2)
-        self.refresh_pipeline_badges()
 
     def _on_voice_generated(self, audio_path: str, srt_path: str):
         """Khi tạo voice xong ở tab 2, tự động ghi ngay file voice.mp3 và voice.srt sang tab 4."""
