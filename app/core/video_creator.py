@@ -152,6 +152,8 @@ def parse_json_mapping(json_path: Path, available_subs: List[int]) -> List[Dict[
       [{"id": "SC01", "subtitles": [1, 2]}, {"id": "SC02", "subtitles": [3]}]
     Format 3 (List of scenes chưa có subtitles):
       Tự động phân bổ phụ đề chia đều cho các scenes.
+    Format 4 (List of scenes có start_at/end_at):
+      Dùng mốc cắt chính xác từ JSON, kể cả khi nhiều cảnh dùng cùng một subtitle.
     """
     if not json_path.exists():
         raise FileNotFoundError(f"File JSON không tồn tại: {json_path}")
@@ -163,6 +165,53 @@ def parse_json_mapping(json_path: Path, available_subs: List[int]) -> List[Dict[
 def parse_json_data(raw_data: Any, available_subs: List[int]) -> List[Dict[str, Any]]:
     """Phân tích dữ liệu JSON đã nạp sẵn theo schema kịch bản cảnh."""
     scenes = []
+
+    timed_fields = (
+        "id", "character", "character_info", "prompt",
+        "subtitle_ids", "start_at", "end_at",
+    )
+    if isinstance(raw_data, list) and any(
+        isinstance(item, dict) and any(
+            field in item for field in ("character", "character_info", "start_at", "end_at")
+        )
+        for item in raw_data
+    ):
+        previous_end = None
+        for index, item in enumerate(raw_data, start=1):
+            if not isinstance(item, dict) or tuple(item) != timed_fields:
+                raise ValueError("Mỗi cảnh phải có đúng 7 trường theo thứ tự quy định.")
+            if item["id"] != f"SC{index:02d}":
+                raise ValueError(f"ID cảnh thứ {index} phải là SC{index:02d}.")
+            if not all(isinstance(item[field], str) for field in ("character", "character_info", "prompt")):
+                raise ValueError("character, character_info và prompt phải là chuỗi.")
+            subs = item["subtitle_ids"]
+            if not isinstance(subs, list) or any(type(sub_id) is not int for sub_id in subs):
+                raise ValueError("subtitle_ids phải là mảng số nguyên.")
+            start_at = item["start_at"]
+            end_at = item["end_at"]
+            time_pattern = r"\d{2}:\d{2}:\d{2},\d{3}"
+            if not isinstance(start_at, str) or not re.fullmatch(time_pattern, start_at):
+                raise ValueError(f"start_at của {item['id']} không đúng định dạng HH:MM:SS,mmm.")
+            if index == 1 and start_at != "00:00:00,000":
+                raise ValueError("SC01 phải bắt đầu tại 00:00:00,000.")
+            if previous_end is not None and start_at != previous_end:
+                raise ValueError(f"start_at của {item['id']} phải bằng end_at của cảnh trước.")
+            is_last = index == len(raw_data)
+            if is_last:
+                if end_at != "AUDIO_END":
+                    raise ValueError("Cảnh cuối phải có end_at là AUDIO_END.")
+            elif not isinstance(end_at, str) or not re.fullmatch(time_pattern, end_at):
+                raise ValueError(f"end_at của {item['id']} không đúng định dạng HH:MM:SS,mmm.")
+            if not is_last and parse_srt_time(end_at) <= parse_srt_time(start_at):
+                raise ValueError(f"end_at của {item['id']} phải sau start_at.")
+            if available_subs and any(sub_id not in available_subs for sub_id in subs):
+                raise ValueError(f"{item['id']} tham chiếu subtitle_id không có trong SRT.")
+            scenes.append({
+                "id": item["id"], "prompt": item["prompt"],
+                "subtitles": subs, "start_at": start_at, "end_at": end_at,
+            })
+            previous_end = end_at
+        return scenes
 
     if isinstance(raw_data, dict):
         for sc_id, subs in raw_data.items():
@@ -282,6 +331,7 @@ def compute_timeline(
 ) -> List[Dict[str, Any]]:
     """
     Tính toán mốc thời gian hiển thị từng ảnh:
+    - Cảnh có start_at/end_at: dùng trực tiếp điểm cắt từ JSON.
     - Cảnh 1: từ giây 0.000 đến lúc phụ đề đầu tiên của cảnh 2 bắt đầu.
     - Cảnh thứ i: từ phụ đề đầu tiên của cảnh i đến phụ đề đầu tiên của cảnh (i+1).
     - Cảnh cuối cùng: từ phụ đề đầu tiên của nó đến hết thời lượng file âm thanh.
@@ -296,7 +346,9 @@ def compute_timeline(
         
         img_path = find_image_for_scene(image_dir, sc_id, i + 1)
 
-        if i == 0:
+        if "start_at" in sc:
+            start_time = parse_srt_time(sc["start_at"])
+        elif i == 0:
             start_time = 0.0
         else:
             if subs and subs[0] in subtitles:
@@ -317,12 +369,18 @@ def compute_timeline(
 
     # Bước 2: Xác định end_time và duration cho từng scene
     for i in range(num_scenes):
-        if i < num_scenes - 1:
+        if "end_at" in scenes[i] and scenes[i]["end_at"] != "AUDIO_END":
+            timeline[i]["end"] = parse_srt_time(scenes[i]["end_at"])
+        elif "end_at" in scenes[i]:
+            timeline[i]["end"] = total_audio_duration
+        elif i < num_scenes - 1:
             timeline[i]["end"] = timeline[i + 1]["start"]
         else:
             timeline[i]["end"] = max(total_audio_duration, timeline[i]["start"] + 0.5)
 
         dur = round(timeline[i]["end"] - timeline[i]["start"], 3)
+        if dur <= 0 and "end_at" in scenes[i]:
+            raise ValueError(f"Thời lượng âm thanh không đủ cho {scenes[i]['id']}.")
         if dur <= 0:
             dur = 0.5
             timeline[i]["end"] = timeline[i]["start"] + dur
