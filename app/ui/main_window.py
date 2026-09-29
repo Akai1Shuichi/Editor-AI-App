@@ -1,12 +1,14 @@
+from html import escape
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import Qt, QTimer, QUrl
+from PyQt6.QtGui import QDesktopServices, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QStackedWidget,
     QTabWidget,
@@ -16,6 +18,7 @@ from PyQt6.QtWidgets import (
 
 from app import config
 from app.core.standalone_state import StandaloneStateStore
+from app.update_check import UpdateCheckerThread
 from app.ui.pricing_tab import PricingTab
 from app.ui.project_workspace import ProjectWorkspace
 from app.ui.settings_tab import SettingsTab
@@ -26,6 +29,7 @@ from app.version import APP_VERSION
 
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
+LATEST_RELEASE_URL = "https://github.com/Akai1Shuichi/Editor-AI-App/releases/latest"
 
 
 class MainWindow(QMainWindow):
@@ -41,6 +45,10 @@ class MainWindow(QMainWindow):
         self.standalone_state = StandaloneStateStore()
         self.init_ui()
         self.update_api_status_badge()
+        self._update_timer = QTimer(self)
+        self._update_timer.setSingleShot(True)
+        self._update_timer.timeout.connect(self._check_update_automatically)
+        self._update_timer.start(1500)
 
     def init_ui(self):
         central_widget = QWidget()
@@ -181,10 +189,58 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
         layout.addStretch()
 
-        version_label = QLabel(f"v{APP_VERSION}")
-        version_label.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
-        layout.addWidget(version_label)
+        self.update_status_label = QLabel(f"v{APP_VERSION}  •  Chưa kiểm tra")
+        self.update_status_label.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
+        layout.addWidget(self.update_status_label)
+        self.update_button = QPushButton("Kiểm tra cập nhật")
+        self.update_button.setObjectName("btn_subtle")
+        self.update_button.clicked.connect(self._check_update_manually)
+        layout.addWidget(self.update_button)
         return update_bar
+
+    def _check_update_automatically(self) -> None:
+        self._start_update_check(manual=False)
+
+    def _check_update_manually(self) -> None:
+        self._start_update_check(manual=True)
+
+    def _start_update_check(self, *, manual: bool) -> None:
+        if getattr(self, "_update_checker", None) and self._update_checker.isRunning():
+            return
+        self.update_button.setEnabled(False)
+        self.update_status_label.setText("Đang kiểm tra cập nhật…")
+        self._update_checker = UpdateCheckerThread(self)
+        self._update_checker.update_available.connect(self._on_update_available)
+        self._update_checker.no_update.connect(lambda: self._on_no_update(manual))
+        self._update_checker.check_failed.connect(lambda message: self._on_update_check_failed(message, manual))
+        self._update_checker.finished.connect(lambda: self.update_button.setEnabled(True))
+        self._update_checker.start()
+
+    def _on_update_available(self, update_info: dict) -> None:
+        self.update_status_label.setText(f"↑ Có bản mới v{update_info['version']}")
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Có bản cập nhật mới")
+        dialog.setTextFormat(Qt.TextFormat.RichText)
+        dialog.setText(
+            f"<p>Đã có phiên bản {escape(str(update_info['version']))}.</p>"
+            f"{update_info['notes']}"
+            f"<p>Link tải: {escape(LATEST_RELEASE_URL)}</p>"
+        )
+        download_button = dialog.addButton("Tải bản cập nhật", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton("Để sau", QMessageBox.ButtonRole.RejectRole)
+        dialog.exec()
+        if dialog.clickedButton() is download_button:
+            QDesktopServices.openUrl(QUrl(LATEST_RELEASE_URL))
+
+    def _on_no_update(self, manual: bool) -> None:
+        self.update_status_label.setText(f"✓ Đã cập nhật (v{APP_VERSION})")
+        if manual:
+            QMessageBox.information(self, "Kiểm tra cập nhật", "Bạn đang sử dụng phiên bản mới nhất.")
+
+    def _on_update_check_failed(self, message: str, manual: bool) -> None:
+        self.update_status_label.setText("Không thể kiểm tra cập nhật")
+        if manual:
+            QMessageBox.warning(self, "Kiểm tra cập nhật", f"Không thể kiểm tra bản cập nhật: {message}")
 
     def _build_footer(self) -> QFrame:
         footer = QFrame()

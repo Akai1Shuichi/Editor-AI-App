@@ -71,5 +71,6 @@ tests/*
 !tests/test_video_output_quality.py
 !tests/test_restored_features.py
 !tests/test_scene_video_handoff.py
+!tests/test_update_check.py
 build/
 dist/
