@@ -27,6 +27,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from app.core.platform_utils import open_path
+from app.core.scene_motion import build_motion_filter, normalize_motion
 
 if sys.platform == "win32":
     try:
@@ -178,8 +179,8 @@ def parse_json_data(raw_data: Any, available_subs: List[int]) -> List[Dict[str, 
     ):
         previous_end = None
         for index, item in enumerate(raw_data, start=1):
-            if not isinstance(item, dict) or tuple(item) != timed_fields:
-                raise ValueError("Mỗi cảnh phải có đúng 7 trường theo thứ tự quy định.")
+            if not isinstance(item, dict) or tuple(key for key in item if key != "motion") != timed_fields:
+                raise ValueError("Mỗi cảnh phải có 7 trường bắt buộc theo thứ tự quy định.")
             if item["id"] != f"SC{index:02d}":
                 raise ValueError(f"ID cảnh thứ {index} phải là SC{index:02d}.")
             if not all(isinstance(item[field], str) for field in ("character", "character_info", "prompt")):
@@ -209,6 +210,7 @@ def parse_json_data(raw_data: Any, available_subs: List[int]) -> List[Dict[str, 
             scenes.append({
                 "id": item["id"], "prompt": item["prompt"],
                 "subtitles": subs, "start_at": start_at, "end_at": end_at,
+                "motion": normalize_motion(item.get("motion")),
             })
             previous_end = end_at
         return scenes
@@ -241,7 +243,8 @@ def parse_json_data(raw_data: Any, available_subs: List[int]) -> List[Dict[str, 
                 scenes.append({
                     "id": str(sc_id).strip(),
                     "prompt": item.get("prompt", ""),
-                    "subtitles": sorted(list(subs))
+                    "subtitles": sorted(list(subs)),
+                    "motion": normalize_motion(item.get("motion")),
                 })
             elif isinstance(item, str):
                 scenes.append({"id": item.strip(), "subtitles": []})
@@ -362,6 +365,7 @@ def compute_timeline(
             "id": sc_id,
             "subtitles": subs,
             "image": img_path,
+            "motion": normalize_motion(sc.get("motion")),
             "start": start_time,
             "end": 0.0,
             "duration": 0.0
@@ -418,6 +422,7 @@ def render_video(
         width, height = 1920, 1080
 
     temp_concat_file = output_path.parent / f"temp_concat_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.txt"
+    temp_filter_file = temp_concat_file.with_suffix(".filter")
     concat_lines = ["ffconcat version 1.0"]
 
     valid_items = [item for item in timeline if item.get("image") is not None]
@@ -439,12 +444,13 @@ def render_video(
 
     temp_concat_file.write_text("\n".join(concat_lines) + "\n", encoding="utf-8")
 
-    vf_filters = [
-        f"scale={width}:{height}:force_original_aspect_ratio=decrease",
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black",
-        "format=yuv420p"
-    ]
-    vf_arg = ",".join(vf_filters)
+    vf_arg = build_motion_filter(timeline, width, height, fps)
+    temp_filter_file.write_text(vf_arg, encoding="utf-8")
+
+    def cleanup_temp_files():
+        for temp_file in (temp_concat_file, temp_filter_file):
+            if temp_file.exists():
+                temp_file.unlink()
 
     cmd = [
         ffmpeg_exe, "-y",
@@ -453,7 +459,7 @@ def render_video(
         "-i", str(temp_concat_file),
         "-i", str(audio_path.resolve()),
         "-t", f"{total_audio_duration:.3f}",
-        "-vf", vf_arg,
+        "-filter_script:v", str(temp_filter_file),
         "-c:v", "libx264",
         "-preset", "fast",
         "-crf", "20",
@@ -488,8 +494,7 @@ def render_video(
                     proc.wait(timeout=3)
                 except subprocess.TimeoutExpired:
                     proc.kill()
-                if temp_concat_file.exists():
-                    temp_concat_file.unlink()
+                cleanup_temp_files()
                 if output_path.exists():
                     output_path.unlink()
                 return {"success": False, "error": "Người dùng đã hủy tác vụ ghép video."}
@@ -508,8 +513,7 @@ def render_video(
 
         retcode = proc.wait()
 
-        if temp_concat_file.exists():
-            temp_concat_file.unlink()
+        cleanup_temp_files()
 
         if retcode != 0:
             err_msg = "".join(stderr_logs[-30:]) if stderr_logs else f"FFmpeg thoát với mã {retcode}"
@@ -527,8 +531,7 @@ def render_video(
             "error": ""
         }
     except Exception as e:
-        if temp_concat_file.exists():
-            temp_concat_file.unlink()
+        cleanup_temp_files()
         return {"success": False, "error": f"Lỗi khi chạy FFmpeg: {e}"}
 
 def show_timeline_table(timeline: List[Dict[str, Any]], total_duration: float):

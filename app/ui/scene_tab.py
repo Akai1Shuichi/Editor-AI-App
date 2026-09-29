@@ -55,7 +55,7 @@ class SceneTab(QWidget):
         root.addWidget(title)
 
         description = QLabel(
-            "Nhập mảng JSON, mỗi phần tử cho một ảnh với 7 trường và mốc cắt start_at/end_at, hoặc chọn file có sẵn."
+            "Nhập mảng JSON, mỗi phần tử cho một ảnh với 7 trường bắt buộc, motion tùy chọn và mốc cắt start_at/end_at, hoặc chọn file có sẵn."
         )
         description.setObjectName("meta_label")
         description.setWordWrap(True)
@@ -96,7 +96,8 @@ class SceneTab(QWidget):
     "prompt": "Một ảnh tại một thời điểm, 16:9, không chữ, logo hoặc watermark.",
     "subtitle_ids": [],
     "start_at": "00:00:00,000",
-    "end_at": "AUDIO_END"
+    "end_at": "AUDIO_END",
+    "motion": {"type": "none", "strength": "subtle"}
   }
 ]"""
         )

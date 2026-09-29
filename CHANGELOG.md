@@ -1,5 +1,10 @@
 # Changelog
 
+## Editor Video AI v1.2 — 29/09/2026
+
+- Tối ưu để xử lý nhiều scene hơn.
+- Hỗ trợ thiết lập hiệu ứng chuyển động riêng cho từng scene trong JSON.
+
 ## Editor Video AI v1.1 — 26/09/2026
 
 - Tạo video ảnh voice đồng nhất như : Người Que 2D , ...
