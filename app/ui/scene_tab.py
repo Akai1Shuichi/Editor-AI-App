@@ -55,7 +55,7 @@ class SceneTab(QWidget):
         root.addWidget(title)
 
         description = QLabel(
-            "Nhập trực tiếp nội dung JSON hoặc chọn file có sẵn để ánh xạ ảnh với phụ đề."
+            "Nhập mảng JSON, mỗi phần tử cho một ảnh với 7 trường bắt buộc, motion tùy chọn và mốc cắt start_at/end_at, hoặc chọn file có sẵn."
         )
         description.setObjectName("meta_label")
         description.setWordWrap(True)
@@ -91,22 +91,13 @@ class SceneTab(QWidget):
             """[
   {
     "id": "SC01",
-    "character": "Người que",
-    "character_info": "Nhân vật người que, đầu tròn, tay chân nét đơn theo ảnh tham chiếu.",
-    "prompt": "",
-    "subtitle_ids": [
-      1,
-      2
-    ]
-  },
-  {
-    "id": "SC02",
     "character": "",
     "character_info": "",
-    "prompt": "Cận cảnh đống than trong hang đá",
-    "subtitle_ids": [
-      3
-    ]
+    "prompt": "Một ảnh tại một thời điểm, 16:9, không chữ, logo hoặc watermark.",
+    "subtitle_ids": [],
+    "start_at": "00:00:00,000",
+    "end_at": "AUDIO_END",
+    "motion": {"type": "none", "strength": "subtle"}
   }
 ]"""
         )
