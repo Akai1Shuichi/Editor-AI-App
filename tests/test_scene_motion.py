@@ -118,7 +118,7 @@ class SceneMotionTests(unittest.TestCase):
             filter_script.write_text(build_motion_filter(timeline, 80, 46, 10), encoding="utf-8")
             proc = subprocess.run([
                 get_ffmpeg_path(), "-v", "error", "-f", "concat", "-safe", "0",
-                "-i", str(concat), "-filter_script:v", str(filter_script),
+                "-i", str(concat), "-/filter:v", str(filter_script),
                 "-frames:v", "20", "-pix_fmt", "rgb24", "-f", "rawvideo", "-",
             ], capture_output=True)
             self.assertEqual(proc.returncode, 0, proc.stderr.decode(errors="replace"))
@@ -147,7 +147,7 @@ class SceneMotionTests(unittest.TestCase):
             ], 160, 90, 30), encoding="utf-8")
             proc = subprocess.run([
                 get_ffmpeg_path(), "-v", "error", "-f", "concat", "-safe", "0",
-                "-i", str(concat), "-filter_script:v", str(script),
+                "-i", str(concat), "-/filter:v", str(script),
                 "-frames:v", "90", "-pix_fmt", "rgb24", "-f", "rawvideo", "-",
             ], capture_output=True)
             self.assertEqual(proc.returncode, 0, proc.stderr.decode(errors="replace"))
