@@ -47,10 +47,7 @@ def escape_ffconcat_path(path: str) -> str:
 
 
 def get_ffmpeg_path() -> str:
-    """Tìm đường dẫn thực thi ffmpeg: hệ thống hoặc thư viện imageio-ffmpeg."""
-    which_ffmpeg = shutil.which("ffmpeg")
-    if which_ffmpeg:
-        return which_ffmpeg
+    """Tìm đường dẫn thực thi ffmpeg: ưu tiên thư viện imageio-ffmpeg."""
     try:
         import imageio_ffmpeg
         return imageio_ffmpeg.get_ffmpeg_exe()
@@ -64,9 +61,14 @@ def get_ffmpeg_path() -> str:
             if candidate.is_file() and os.access(candidate, os.X_OK):
                 return str(candidate)
 
-    console.print("[bold red][!] Không tìm thấy ffmpeg và chưa cài đặt thư viện 'imageio-ffmpeg'![/bold red]")
+    # Dự phòng cuối cùng qua ffmpeg hệ thống nếu chưa cài imageio-ffmpeg
+    which_ffmpeg = shutil.which("ffmpeg")
+    if which_ffmpeg:
+        return which_ffmpeg
+
+    console.print("[bold red][!] Không tìm thấy ffmpeg trong thư viện 'imageio-ffmpeg' hoặc hệ thống![/bold red]")
     console.print("[yellow]Vui lòng chạy: pip install imageio-ffmpeg[/yellow]")
-    raise RuntimeError("Không tìm thấy ffmpeg trên hệ thống và trong imageio-ffmpeg.")
+    raise RuntimeError("Không tìm thấy ffmpeg trong thư viện imageio-ffmpeg.")
 
 def parse_srt_time(time_str: str) -> float:
     """Chuyển đổi chuỗi thời gian SRT (HH:MM:SS,mmm hoặc .mmm) sang giây float."""
@@ -459,7 +461,7 @@ def render_video(
         "-i", str(temp_concat_file),
         "-i", str(audio_path.resolve()),
         "-t", f"{total_audio_duration:.3f}",
-        "-filter_script:v", str(temp_filter_file),
+        "-/filter:v", str(temp_filter_file),
         "-c:v", "libx264",
         "-preset", "fast",
         "-crf", "20",

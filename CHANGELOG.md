@@ -1,5 +1,8 @@
 # Changelog
 
+## Editor Video AI v1.3 — 30/09/2026
+- Fix lỗi xuất video do phiên bản ffmpeg không tương thích cho một số máy tính.
+
 ## Editor Video AI v1.2 — 29/09/2026
 
 - Tối ưu để xử lý nhiều scene hơn.
