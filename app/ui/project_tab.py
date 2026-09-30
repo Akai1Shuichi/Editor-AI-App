@@ -5,6 +5,7 @@ from typing import List, Optional
 from PyQt6.QtCore import QEvent, QSize, Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QColor, QDesktopServices, QIcon
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFormLayout,
@@ -24,6 +25,8 @@ from PyQt6.QtWidgets import (
 
 from app.core.project_manager import Project, ProjectManager, slugify
 from app.core.platform_utils import open_path
+from app.core.batch_render import validate_project_for_render
+from app.ui.batch_render_dialog import BatchRenderDialog
 
 YOUTUBE_TUTORIAL_URL = "https://youtu.be/SwU7mc58AXA?si=MHx7uoIvZFKHL430"
 YOUTUBE_ICON = Path(__file__).resolve().parent.parent / "assets" / "icons" / "youtube.svg"
@@ -146,6 +149,7 @@ class ProjectTab(QWidget):
         self.projects: List[Project] = []
         self.visible_projects: List[Project] = []
         self.selected_slug: Optional[str] = None
+        self.selected_batch_slugs: set[str] = set()
         self._build_ui()
         self.refresh_projects()
 
@@ -174,6 +178,13 @@ class ProjectTab(QWidget):
         self.search.textChanged.connect(self._apply_filters)
         header.addWidget(self.search)
 
+        self.btn_batch = QPushButton("🚀  Xuất hàng loạt")
+        self.btn_batch.setObjectName("btn_primary")
+        self.btn_batch.setToolTip("Xuất video hàng loạt cho các dự án đã chọn")
+        self.btn_batch.setEnabled(False)
+        self.btn_batch.clicked.connect(self.open_batch_render_dialog)
+        header.addWidget(self.btn_batch)
+
         create = QPushButton("+  Dự án mới")
         create.setObjectName("btn_primary")
         create.clicked.connect(self.show_new_project_dialog)
@@ -194,6 +205,28 @@ class ProjectTab(QWidget):
         self.lbl_count = QLabel("0 dự án")
         self.lbl_count.setObjectName("section_heading")
         controls.addWidget(self.lbl_count)
+
+        self.lbl_selected_batch = QLabel("Đã chọn: 0")
+        self.lbl_selected_batch.setStyleSheet(
+            "color: #60a5fa; font-weight: 600; font-size: 12px; margin-left: 10px; margin-right: 6px;"
+        )
+        controls.addWidget(self.lbl_selected_batch)
+
+        btn_select_all = QPushButton("Chọn tất cả")
+        btn_select_all.setObjectName("btn_subtle")
+        btn_select_all.clicked.connect(self.select_all_projects)
+        controls.addWidget(btn_select_all)
+
+        btn_select_ready = QPushButton("Chọn dự án sẵn sàng")
+        btn_select_ready.setObjectName("btn_subtle")
+        btn_select_ready.clicked.connect(self.select_ready_projects)
+        controls.addWidget(btn_select_ready)
+
+        btn_deselect = QPushButton("Bỏ chọn")
+        btn_deselect.setObjectName("btn_subtle")
+        btn_deselect.clicked.connect(self.deselect_all_projects)
+        controls.addWidget(btn_deselect)
+
         controls.addStretch()
         controls.addWidget(QLabel("Sắp xếp"))
         self.sort_combo = QComboBox()
@@ -212,9 +245,10 @@ class ProjectTab(QWidget):
 
         self.table = QTableWidget()
         self.table.setObjectName("project_table")
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
             [
+                "",
                 "TÊN DỰ ÁN",
                 "TỶ LỆ",
                 "ẢNH",
@@ -225,19 +259,23 @@ class ProjectTab(QWidget):
             ]
         )
         self.table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch
+            0, QHeaderView.ResizeMode.Fixed
         )
-        for column in (1, 2, 3, 4):
+        self.table.horizontalHeader().resizeSection(0, 42)
+        self.table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        for column in (2, 3, 4, 5):
             self.table.horizontalHeader().setSectionResizeMode(
                 column, QHeaderView.ResizeMode.ResizeToContents
             )
         self.table.horizontalHeader().setSectionResizeMode(
-            5, QHeaderView.ResizeMode.ResizeToContents
+            6, QHeaderView.ResizeMode.ResizeToContents
         )
         self.table.horizontalHeader().setSectionResizeMode(
-            6, QHeaderView.ResizeMode.Fixed
+            7, QHeaderView.ResizeMode.Fixed
         )
-        self.table.horizontalHeader().resizeSection(6, 200)
+        self.table.horizontalHeader().resizeSection(7, 200)
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(False)
@@ -319,15 +357,31 @@ class ProjectTab(QWidget):
             stats = project.stats()
             self.table.setRowHeight(row, 58)
 
+            # Cột 0: Checkbox chọn dự án xuất hàng loạt
+            chk_container = QWidget()
+            chk_layout = QHBoxLayout(chk_container)
+            chk_layout.setContentsMargins(10, 0, 0, 0)
+            chk_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            chk = QCheckBox()
+            chk.setChecked(project.slug in self.selected_batch_slugs)
+            chk.toggled.connect(
+                lambda checked, s=project.slug: self._on_batch_checkbox_toggled(s, checked)
+            )
+            chk_layout.addWidget(chk)
+            self.table.setCellWidget(row, 0, chk_container)
+
+            # Cột 1: Tên dự án
             name = QTableWidgetItem(f"{project.name}\nprojects/{project.slug}")
             name.setData(Qt.ItemDataRole.UserRole, project.slug)
             name.setForeground(QColor("#F3F5F7"))
-            self.table.setItem(row, 0, name)
+            self.table.setItem(row, 1, name)
 
+            # Cột 2: Tỷ lệ
             ratio = QTableWidgetItem(project.aspect_ratio)
             ratio.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(row, 1, ratio)
+            self.table.setItem(row, 2, ratio)
 
+            # Cột 3: Ảnh
             clean_count = stats["clean_images_count"]
             raw_count = stats["raw_images_count"]
             image_text = (
@@ -335,8 +389,9 @@ class ProjectTab(QWidget):
             )
             images = QTableWidgetItem(image_text)
             images.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(row, 2, images)
+            self.table.setItem(row, 3, images)
 
+            # Cột 4: Giọng nói
             if stats["has_voice"] and stats["has_srt"]:
                 voice_text = "Sẵn sàng"
                 voice_color = "#35C58A"
@@ -349,20 +404,23 @@ class ProjectTab(QWidget):
             voice = QTableWidgetItem(voice_text)
             voice.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             voice.setForeground(QColor(voice_color))
-            self.table.setItem(row, 3, voice)
+            self.table.setItem(row, 4, voice)
 
+            # Cột 5: Video
             count = stats["videos_count"]
             videos = QTableWidgetItem(f"{count} bản" if count else "Chưa xuất")
             videos.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             videos.setForeground(QColor("#35C58A" if count else "#70798A"))
-            self.table.setItem(row, 4, videos)
+            self.table.setItem(row, 5, videos)
 
+            # Cột 6: Cập nhật
             updated = QTableWidgetItem(f"{self._format_date(project.updated_at)}    ›")
             updated.setTextAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
-            self.table.setItem(row, 5, updated)
+            self.table.setItem(row, 6, updated)
 
+            # Cột 7: Thao tác
             actions = QWidget()
             actions_layout = QHBoxLayout(actions)
             actions_layout.setContentsMargins(16, 5, 8, 5)
@@ -384,7 +442,7 @@ class ProjectTab(QWidget):
                 lambda _, slug=project.slug: self.delete_project(slug)
             )
             actions_layout.addWidget(delete_button)
-            self.table.setCellWidget(row, 6, actions)
+            self.table.setCellWidget(row, 7, actions)
 
             if project.slug == selected_slug:
                 selected_row = row
@@ -394,6 +452,8 @@ class ProjectTab(QWidget):
             self.table.selectRow(selected_row)
         else:
             self.selected_slug = None
+
+        self._update_batch_buttons()
 
     @staticmethod
     def _format_date(value: str) -> str:
@@ -428,11 +488,80 @@ class ProjectTab(QWidget):
         self.selected_slug = project.slug
 
     def _on_cell_clicked(self, row: int, column: int):
-        if column == 5:
+        if column == 6:
             project = self._project_for_row(row)
             if project:
                 self.selected_slug = project.slug
                 self.open_selected_project()
+
+    def _on_batch_checkbox_toggled(self, slug: str, checked: bool):
+        if checked:
+            self.selected_batch_slugs.add(slug)
+        else:
+            self.selected_batch_slugs.discard(slug)
+        self._update_batch_buttons()
+
+    def select_all_projects(self):
+        self.selected_batch_slugs = {p.slug for p in self.visible_projects}
+        self._update_table_checkboxes()
+        self._update_batch_buttons()
+
+    def select_ready_projects(self):
+        ready_slugs = set()
+        for p in self.visible_projects:
+            val = validate_project_for_render(p)
+            if val["is_ready"]:
+                ready_slugs.add(p.slug)
+        self.selected_batch_slugs = ready_slugs
+        self._update_table_checkboxes()
+        self._update_batch_buttons()
+
+    def deselect_all_projects(self):
+        self.selected_batch_slugs.clear()
+        self._update_table_checkboxes()
+        self._update_batch_buttons()
+
+    def _update_table_checkboxes(self):
+        self.table.blockSignals(True)
+        for row, project in enumerate(self.visible_projects):
+            cell_widget = self.table.cellWidget(row, 0)
+            if cell_widget:
+                chk = cell_widget.findChild(QCheckBox)
+                if chk:
+                    chk.blockSignals(True)
+                    chk.setChecked(project.slug in self.selected_batch_slugs)
+                    chk.blockSignals(False)
+        self.table.blockSignals(False)
+
+    def _update_batch_buttons(self):
+        count = len(self.selected_batch_slugs)
+        self.lbl_selected_batch.setText(f"Đã chọn: {count}")
+        if count > 0:
+            self.btn_batch.setText(f"🚀  Xuất hàng loạt ({count})")
+            self.btn_batch.setEnabled(True)
+        else:
+            self.btn_batch.setText("🚀  Xuất hàng loạt")
+            self.btn_batch.setEnabled(False)
+
+    def open_batch_render_dialog(self):
+        if not self.selected_batch_slugs:
+            QMessageBox.information(
+                self,
+                "Chưa chọn dự án",
+                "Vui lòng tích chọn ít nhất một dự án trong danh sách để xuất video hàng loạt.",
+            )
+            return
+
+        selected_projects = [
+            p for p in self.projects if p.slug in self.selected_batch_slugs
+        ]
+        if not selected_projects:
+            return
+
+        dialog = BatchRenderDialog(selected_projects, parent=self)
+        dialog.batch_finished.connect(lambda _: self.refresh_projects())
+        dialog.exec()
+        self.refresh_projects()
 
     def open_selected_project(self):
         project = self._selected_project()
@@ -489,6 +618,7 @@ class ProjectTab(QWidget):
             return
         deleted_slug = project.slug
         self.selected_slug = None
+        self.selected_batch_slugs.discard(deleted_slug)
         self.refresh_projects()
         self.project_deleted.emit(deleted_slug)
 
