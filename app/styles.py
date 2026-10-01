@@ -605,6 +605,54 @@ QSplitter::handle {
     height: 1px;
 }
 
+QLabel#video_preview_canvas {
+    background-color: #0b0d12;
+    border: 1px solid #303642;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+QLabel#video_clip_name {
+    color: #f8fafc;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+QTreeWidget#video_asset_tree {
+    background-color: #12151d;
+    border: 1px solid #2b303d;
+    border-radius: 6px;
+    color: #dbe4f0;
+    padding: 3px;
+}
+
+QTreeWidget#video_asset_tree::item {
+    min-height: 32px;
+    padding: 2px 4px;
+}
+
+QTreeWidget#video_asset_tree::item:selected {
+    background-color: #1e3a5f;
+    color: #f8fafc;
+}
+
+QPushButton#video_timeline_clip {
+    background-color: #24486b;
+    border: 1px solid #3b82b8;
+    border-radius: 5px;
+    color: #e0f2fe;
+    min-height: 25px;
+    padding: 2px 5px;
+    text-align: left;
+}
+
+QPushButton#video_timeline_clip[selected="true"] {
+    background-color: #2563a6;
+    border: 1px solid #93c5fd;
+    color: #ffffff;
+}
+
 /* ================= PAGINATION BAR ================= */
 #pagination_bar {
     background-color: #15161d;

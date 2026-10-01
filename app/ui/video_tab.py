@@ -4,13 +4,14 @@ import math
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl
-from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QColor
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl, QSize
+from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QColor, QIcon
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QComboBox, QProgressBar, QFrame, QMessageBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
-    QSplitter, QScrollArea, QApplication, QSizePolicy
+    QSplitter, QScrollArea, QApplication, QSizePolicy, QTreeWidget,
+    QTreeWidgetItem
 )
 
 from app import config
@@ -61,6 +62,39 @@ class VideoRenderWorker(QThread):
         self.render_finished.emit(res.get("success", False), res)
 
 
+class PreviewImage(QLabel):
+    """Scale the selected still image whenever the preview area changes size."""
+
+    def __init__(self):
+        super().__init__("Chọn một cảnh trên timeline để xem ảnh")
+        self._source = QPixmap()
+        self._placeholder = "Chọn một cảnh trên timeline để xem ảnh"
+        self.setObjectName("video_preview_canvas")
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumHeight(190)
+        self.setWordWrap(True)
+
+    def set_image(self, path: Optional[Path]):
+        self._source = QPixmap(str(path)) if path and path.is_file() else QPixmap()
+        self._placeholder = ("Không tìm thấy hoặc không đọc được ảnh cảnh" if path else
+                             "Chọn một cảnh trên timeline để xem ảnh")
+        self._update_pixmap()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_pixmap()
+
+    def _update_pixmap(self):
+        if not self._source.isNull():
+            self.setPixmap(self._source.scaled(
+                self.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            ))
+        else:
+            self.clear()
+            self.setText(self._placeholder)
+
+
 class VideoTab(QWidget):
     """Tab Ghép Video Tự Động từ Ảnh, Voice, Phụ đề SRT & Kịch bản JSON."""
 
@@ -82,6 +116,7 @@ class VideoTab(QWidget):
         self.auto_save = False
         self._loading_edit = False
         self._edit_dirty = False
+        self._selected_scene = None
 
         self.init_ui()
         self.combo_ratio.currentIndexChanged.connect(self._on_export_settings_changed)
@@ -93,7 +128,7 @@ class VideoTab(QWidget):
         main_layout.setContentsMargins(14, 12, 14, 14)
         main_layout.setSpacing(10)
 
-        # Splitter chia 2 cột: Cột trái (Cấu hình đầu vào), Cột phải (Bảng Timeline & Kết quả)
+        # Asset/source column and the edit workspace.
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setObjectName("video_splitter")
 
@@ -104,13 +139,34 @@ class VideoTab(QWidget):
         left_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        left_scroll.setMinimumWidth(430)
-        left_scroll.setMaximumWidth(620)
+        left_scroll.setMinimumWidth(480)
+        left_scroll.setMaximumWidth(540)
 
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(4, 4, 10, 4)
         left_layout.setSpacing(12)
+
+        library = QFrame()
+        library.setProperty("class", "panel")
+        library_layout = QVBoxLayout(library)
+        library_layout.setContentsMargins(12, 12, 12, 12)
+        library_layout.setSpacing(7)
+        library_title = QLabel("Thư viện asset")
+        library_title.setProperty("class", "panel_title")
+        library_layout.addWidget(library_title)
+        self.asset_tree = QTreeWidget()
+        self.asset_tree.setObjectName("video_asset_tree")
+        self.asset_tree.setHeaderHidden(True)
+        self.asset_tree.setIconSize(QSize(34, 34))
+        self.asset_tree.setMinimumHeight(180)
+        self.asset_tree.itemClicked.connect(self._on_asset_clicked)
+        library_layout.addWidget(self.asset_tree)
+        self.lbl_asset_hint = QLabel("Ảnh, voice và phụ đề của nguồn đang chọn")
+        self.lbl_asset_hint.setProperty("class", "section_label")
+        self.lbl_asset_hint.setWordWrap(True)
+        library_layout.addWidget(self.lbl_asset_hint)
+        left_layout.addWidget(library)
 
         # Card 1: Nạp Tệp Đầu Vào
         panel_inputs = QFrame()
@@ -252,68 +308,116 @@ class VideoTab(QWidget):
 
         left_layout.addWidget(panel_cfg)
 
-        # Card 3: Nút Thao Tác & Tiến Trình
+        # Pinned workspace toolbar: source analysis and export stay visible.
         panel_act = QFrame()
         panel_act.setProperty("class", "panel")
         act_layout = QVBoxLayout(panel_act)
-        act_layout.setContentsMargins(14, 14, 14, 14)
-        act_layout.setSpacing(10)
-
-        self.btn_preview = QPushButton("🔍  Phân Tích & Xem Trước Timeline")
-        self.btn_preview.setObjectName("btn_subtle")
-        self.btn_preview.clicked.connect(self.analyze_timeline)
-        act_layout.addWidget(self.btn_preview)
-
-        self.btn_rebuild = QPushButton("Tạo lại timeline từ nguồn")
-        self.btn_rebuild.setObjectName("btn_subtle")
-        self.btn_rebuild.setToolTip("Dùng ảnh, voice, SRT và kịch bản đang chọn để tạo lại bản dựng")
-        self.btn_rebuild.clicked.connect(self.rebuild_timeline)
-        self.btn_rebuild.setVisible(False)
-        act_layout.addWidget(self.btn_rebuild)
+        act_layout.setContentsMargins(12, 8, 12, 8)
+        act_layout.setSpacing(5)
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        self.btn_start = QPushButton("🚀  Bắt Đầu Ghép Video")
+        self.btn_preview = QPushButton("Phân tích timeline")
+        self.btn_preview.setObjectName("btn_subtle")
+        self.btn_preview.clicked.connect(self.analyze_timeline)
+        btn_row.addWidget(self.btn_preview)
+
+        self.btn_rebuild = QPushButton("Tạo lại từ nguồn")
+        self.btn_rebuild.setObjectName("btn_subtle")
+        self.btn_rebuild.setToolTip("Dùng ảnh, voice, SRT và kịch bản đang chọn để tạo lại bản dựng")
+        self.btn_rebuild.clicked.connect(self.rebuild_timeline)
+        self.btn_rebuild.setVisible(False)
+        btn_row.addWidget(self.btn_rebuild)
+        btn_row.addStretch()
+
+        self.btn_start = QPushButton("Xuất MP4")
         self.btn_start.setObjectName("btn_primary")
-        self.btn_start.setMinimumHeight(38)
+        self.btn_start.setMinimumHeight(32)
         self.btn_start.clicked.connect(self.start_render)
-        btn_row.addWidget(self.btn_start, stretch=1)
+        btn_row.addWidget(self.btn_start)
 
         self.btn_cancel = QPushButton("⛔  Hủy")
         self.btn_cancel.setObjectName("btn_danger")
-        self.btn_cancel.setMinimumHeight(38)
+        self.btn_cancel.setMinimumHeight(32)
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.setVisible(False)
         self.btn_cancel.clicked.connect(self.cancel_render)
-        btn_row.addWidget(self.btn_cancel, stretch=1)
+        btn_row.addWidget(self.btn_cancel)
 
         act_layout.addLayout(btn_row)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setMaximumHeight(12)
         act_layout.addWidget(self.progress_bar)
 
         self.lbl_status = QLabel("Sẵn sàng.")
         self.lbl_status.setStyleSheet("color: #9ca3af; font-size: 11px;")
+        self.lbl_status.setWordWrap(True)
         act_layout.addWidget(self.lbl_status)
 
-        left_layout.addWidget(panel_act)
+        main_layout.addWidget(panel_act)
         left_layout.addStretch()
 
         left_scroll.setWidget(left_widget)
         splitter.addWidget(left_scroll)
 
-        # ================= CỘT PHẢI: BẢNG TIMELINE & KẾT QUẢ =================
+        # ================= PREVIEW, INSPECTOR & TIMELINE =================
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(8, 4, 4, 4)
         right_layout.setSpacing(10)
 
+        top_splitter = QSplitter(Qt.Orientation.Horizontal)
+        top_splitter.setObjectName("video_top_splitter")
+        preview_panel = QFrame()
+        preview_panel.setProperty("class", "panel")
+        preview_layout = QVBoxLayout(preview_panel)
+        preview_layout.setContentsMargins(10, 10, 10, 10)
+        preview_layout.setSpacing(6)
+        preview_title = QLabel("Màn hình preview")
+        preview_title.setProperty("class", "panel_title")
+        preview_layout.addWidget(preview_title)
+        self.preview_image = PreviewImage()
+        preview_layout.addWidget(self.preview_image, stretch=1)
+        self.lbl_preview_time = QLabel("00:00.000 / 00:00.000  ·  Chưa chọn cảnh")
+        self.lbl_preview_time.setProperty("class", "section_label")
+        preview_layout.addWidget(self.lbl_preview_time)
+        top_splitter.addWidget(preview_panel)
+
+        inspector = QFrame()
+        inspector.setProperty("class", "panel")
+        inspector_layout = QVBoxLayout(inspector)
+        inspector_layout.setContentsMargins(12, 10, 12, 10)
+        inspector_layout.setSpacing(9)
+        inspector_title = QLabel("Thuộc tính clip")
+        inspector_title.setProperty("class", "panel_title")
+        inspector_layout.addWidget(inspector_title)
+        self.lbl_clip_name = QLabel("Chưa chọn cảnh")
+        self.lbl_clip_name.setObjectName("video_clip_name")
+        inspector_layout.addWidget(self.lbl_clip_name)
+        self.lbl_clip_media = QLabel("Ảnh: —")
+        self.lbl_clip_media.setWordWrap(True)
+        inspector_layout.addWidget(self.lbl_clip_media)
+        self.lbl_clip_range = QLabel("Thời gian: —")
+        inspector_layout.addWidget(self.lbl_clip_range)
+        self.lbl_clip_motion = QLabel("Chuyển động: —")
+        inspector_layout.addWidget(self.lbl_clip_motion)
+        self.lbl_clip_subtitles = QLabel("Phụ đề: —")
+        self.lbl_clip_subtitles.setWordWrap(True)
+        inspector_layout.addWidget(self.lbl_clip_subtitles)
+        inspector_layout.addStretch()
+        top_splitter.addWidget(inspector)
+        top_splitter.setStretchFactor(0, 3)
+        top_splitter.setStretchFactor(1, 2)
+        top_splitter.setSizes([460, 270])
+        right_layout.addWidget(top_splitter, stretch=3)
+
         # Header Bảng Timeline + Badge thống kê
         tb_header_box = QHBoxLayout()
-        lbl_tb_title = QLabel("Bảng Phân Bổ Cảnh (Timeline)")
+        lbl_tb_title = QLabel("Timeline bản dựng")
         lbl_tb_title.setProperty("class", "panel_title")
         tb_header_box.addWidget(lbl_tb_title)
 
@@ -333,6 +437,19 @@ class VideoTab(QWidget):
 
         right_layout.addLayout(tb_header_box)
 
+        self.timeline_scroll = QScrollArea()
+        self.timeline_scroll.setObjectName("video_timeline_scroll")
+        self.timeline_scroll.setWidgetResizable(True)
+        self.timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.timeline_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.timeline_scroll.setMinimumHeight(98)
+        self.timeline_content = QWidget()
+        self.timeline_lanes = QVBoxLayout(self.timeline_content)
+        self.timeline_lanes.setContentsMargins(4, 4, 4, 4)
+        self.timeline_lanes.setSpacing(4)
+        self.timeline_scroll.setWidget(self.timeline_content)
+        right_layout.addWidget(self.timeline_scroll)
+
         # Bảng Table Timeline
         self.table = QTableWidget()
         self.table.setColumnCount(7)
@@ -350,7 +467,7 @@ class VideoTab(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.itemClicked.connect(self.on_table_row_clicked)
-        right_layout.addWidget(self.table)
+        right_layout.addWidget(self.table, stretch=2)
 
         # Card Kết quả Video Xuất Ra
         self.panel_result = QFrame()
@@ -391,11 +508,163 @@ class VideoTab(QWidget):
         right_layout.addWidget(self.panel_result)
 
         splitter.addWidget(right_widget)
-        splitter.setStretchFactor(0, 4)
-        splitter.setStretchFactor(1, 6)
-        splitter.setSizes([520, 680])
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 7)
+        splitter.setSizes([500, 700])
 
         main_layout.addWidget(splitter)
+        self._refresh_asset_library()
+        self._refresh_timeline_tracks()
+
+    def _refresh_asset_library(self):
+        """Show the files currently chosen as sources without altering the saved edit."""
+        self.asset_tree.clear()
+        image_group = QTreeWidgetItem(["Ảnh cảnh"])
+        voice_group = QTreeWidgetItem(["Voice"])
+        subtitle_group = QTreeWidgetItem(["Phụ đề"])
+        script_group = QTreeWidgetItem(["Kịch bản"])
+        for group in (image_group, voice_group, subtitle_group, script_group):
+            self.asset_tree.addTopLevelItem(group)
+
+        image_dir_text = self.txt_image_dir.text().strip().strip('"')
+        image_dir = Path(image_dir_text) if image_dir_text else None
+        image_files = []
+        if image_dir and image_dir.is_dir():
+            image_files = sorted(
+                (path for path in image_dir.iterdir() if path.is_file() and
+                 path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}),
+                key=lambda path: path.name.casefold(),
+            )
+        for path in image_files:
+            item = QTreeWidgetItem([path.name])
+            item.setIcon(0, QIcon(str(path)))
+            item.setData(0, Qt.ItemDataRole.UserRole, ("image", str(path)))
+            item.setToolTip(0, str(path))
+            image_group.addChild(item)
+        image_group.setText(0, f"Ảnh cảnh ({len(image_files)})")
+
+        for group, kind, line_edit in (
+            (voice_group, "audio", self.txt_audio_file),
+            (subtitle_group, "srt", self.txt_srt_file),
+            (script_group, "script", self.txt_json_file),
+        ):
+            selected = line_edit.text().strip().strip('"')
+            if selected:
+                path = Path(selected)
+                item = QTreeWidgetItem([path.name or selected])
+                item.setData(0, Qt.ItemDataRole.UserRole, (kind, str(path)))
+                item.setToolTip(0, str(path))
+                group.addChild(item)
+            elif kind == "script" and self._json_data is not None:
+                group.addChild(QTreeWidgetItem(["Kịch bản từ Bước 3"]))
+        self.asset_tree.expandAll()
+
+    def _on_asset_clicked(self, item, _column):
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        kind, location = data
+        if kind == "image":
+            self._selected_scene = None
+            self.table.clearSelection()
+            self.preview_image.set_image(Path(location))
+            self.lbl_preview_time.setText(f"Asset: {Path(location).name}")
+            self.lbl_clip_name.setText("Ảnh trong thư viện")
+            self.lbl_clip_media.setText(f"Ảnh: {Path(location).name}")
+            self.lbl_clip_media.setToolTip(location)
+            self.lbl_clip_range.setText("Thời gian: Chưa gán cảnh")
+            self.lbl_clip_motion.setText("Chuyển động: —")
+            self.lbl_clip_subtitles.setText("Phụ đề: —")
+            for button in self._scene_buttons:
+                button.setProperty("selected", False)
+                button.style().unpolish(button)
+                button.style().polish(button)
+        else:
+            self.lbl_status.setText(f"{item.text(0)} · {location}")
+
+    def _refresh_timeline_tracks(self):
+        while self.timeline_lanes.count():
+            entry = self.timeline_lanes.takeAt(0)
+            if entry.widget():
+                entry.widget().deleteLater()
+        self._scene_buttons = []
+
+        def lane(title):
+            widget = QWidget()
+            row = QHBoxLayout(widget)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(3)
+            label = QLabel(title)
+            label.setFixedWidth(58)
+            label.setProperty("class", "section_label")
+            row.addWidget(label)
+            self.timeline_lanes.addWidget(widget)
+            return row
+
+        video_row = lane("ẢNH")
+        if self.current_timeline:
+            for index, clip in enumerate(self.current_timeline):
+                button = QPushButton(f"{clip['id']}  ·  {clip['duration']:.1f}s")
+                button.setObjectName("video_timeline_clip")
+                button.setToolTip(f"{video_creator.format_time(clip['start'])} – "
+                                  f"{video_creator.format_time(clip['end'])}")
+                button.setFixedWidth(max(84, min(420, round(clip["duration"] * 65))))
+                button.clicked.connect(lambda _checked=False, row=index: self._select_scene(row))
+                video_row.addWidget(button)
+                self._scene_buttons.append(button)
+        else:
+            video_row.addWidget(QLabel("Chưa có timeline. Phân tích nguồn để bắt đầu."))
+        video_row.addStretch()
+
+        voice_row = lane("VOICE")
+        voice_ref = (self.edit_document["tracks"]["audio"][0]["media"]
+                     if self.edit_document else self.txt_audio_file.text())
+        voice_name = Path(voice_ref).name if voice_ref else "Chưa chọn voice"
+        voice_row.addWidget(QLabel(f"▰  {voice_name}  ·  {self.total_audio_duration:.1f}s"))
+        voice_row.addStretch()
+
+        subtitle_row = lane("SRT")
+        if self.edit_document:
+            count = len(self.edit_document["tracks"]["subtitles"])
+            subtitle_row.addWidget(QLabel(f"{count} đoạn phụ đề trong bản dựng"))
+        else:
+            subtitle_row.addWidget(QLabel("Phụ đề sẽ hiện sau khi tạo timeline"))
+        subtitle_row.addStretch()
+
+    def _select_scene(self, row: int):
+        if not 0 <= row < len(self.current_timeline):
+            return
+        self._selected_scene = row
+        clip = self.current_timeline[row]
+        self.table.selectRow(row)
+        self.preview_image.set_image(clip.get("image"))
+        self.lbl_preview_time.setText(
+            f"{video_creator.format_time(clip['start'])} – "
+            f"{video_creator.format_time(clip['end'])}  /  "
+            f"{video_creator.format_time(self.total_audio_duration)}"
+        )
+        self.lbl_clip_name.setText(f"Cảnh {row + 1} · {clip['id']}")
+        image = clip.get("image")
+        self.lbl_clip_media.setText(f"Ảnh: {image.name if image else 'Chưa có ảnh'}")
+        self.lbl_clip_media.setToolTip(str(image) if image else "")
+        self.lbl_clip_range.setText(
+            f"Thời gian: {video_creator.format_time(clip['start'])} – "
+            f"{video_creator.format_time(clip['end'])} ({clip['duration']:.2f}s)"
+        )
+        motion = clip.get("motion") or {"type": "none"}
+        self.lbl_clip_motion.setText(f"Chuyển động: {motion.get('type', 'none')}")
+        subtitle_ids = clip.get("subtitles", [])
+        if self.edit_document:
+            subtitles = {entry["id"]: entry["text"] for entry in
+                         self.edit_document["tracks"]["subtitles"]}
+            content = "\n".join(subtitles.get(sub_id, "") for sub_id in subtitle_ids).strip()
+        else:
+            content = ", ".join(map(str, subtitle_ids))
+        self.lbl_clip_subtitles.setText(f"Phụ đề: {content or '—'}")
+        for index, button in enumerate(self._scene_buttons):
+            button.setProperty("selected", index == row)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     # ================= TỰ ĐỘNG PHÁT HIỆN & BROWSE =================
     def auto_detect_defaults(self):
@@ -496,6 +765,7 @@ class VideoTab(QWidget):
         """Đồng bộ hóa toàn bộ tài nguyên đầu vào theo Dự Án được chọn."""
         self.edit_document = None
         self._edit_dirty = False
+        self._selected_scene = None
         self.current_timeline = []
         self.total_audio_duration = 0.0
         self.last_output_video = None
@@ -504,6 +774,13 @@ class VideoTab(QWidget):
         self.lbl_summary_duration.setText("00:00.000")
         self.lbl_summary_images.setText("Chưa phân tích")
         self.panel_result.setVisible(False)
+        self.preview_image.set_image(None)
+        self.lbl_preview_time.setText("00:00.000 / 00:00.000  ·  Chưa chọn cảnh")
+        self.lbl_clip_name.setText("Chưa chọn cảnh")
+        self.lbl_clip_media.setText("Ảnh: —")
+        self.lbl_clip_range.setText("Thời gian: —")
+        self.lbl_clip_motion.setText("Chuyển động: —")
+        self.lbl_clip_subtitles.setText("Phụ đề: —")
         self.project = project
         self.btn_rebuild.setVisible(project is not None)
         self._json_data = None
@@ -518,6 +795,8 @@ class VideoTab(QWidget):
                 self.txt_output_path.clear()
                 self.table.setRowCount(0)
                 self.panel_result.setVisible(False)
+            self._refresh_asset_library()
+            self._refresh_timeline_tracks()
             return
 
         if hasattr(self, "lbl_project_badge"):
@@ -572,6 +851,9 @@ class VideoTab(QWidget):
             self.analyze_timeline()
         else:
             self.lbl_status.setText(f"Đã chuyển sang dự án '{project.name}'.")
+        self._refresh_asset_library()
+        if not self.current_timeline:
+            self._refresh_timeline_tracks()
 
     def generate_default_output_name(self):
         """Tạo tên mặc định cho video xuất ra theo timestamp."""
@@ -584,6 +866,7 @@ class VideoTab(QWidget):
 
     def on_input_changed(self):
         self.panel_result.setVisible(False)
+        self._refresh_asset_library()
         if self._loading_edit:
             return
         if self.edit_document is not None:
@@ -591,6 +874,7 @@ class VideoTab(QWidget):
         else:
             self.current_timeline = []
             self.table.setRowCount(0)
+            self._refresh_timeline_tracks()
 
     def set_audio_and_srt(self, audio_path: str, srt_path: str):
         """Được gọi từ MainWindow hoặc TTSTab khi vừa tạo xong voice & srt."""
@@ -817,6 +1101,10 @@ class VideoTab(QWidget):
 
     def _show_timeline(self, timeline):
         self.populate_table(timeline)
+        self._refresh_asset_library()
+        self._refresh_timeline_tracks()
+        if timeline:
+            self._select_scene(min(self._selected_scene or 0, len(timeline) - 1))
 
         # Cập nhật thông số tóm tắt
         missing_count = sum(1 for item in timeline if item["image"] is None or not item["image"].is_file())
@@ -887,6 +1175,7 @@ class VideoTab(QWidget):
     def on_table_row_clicked(self, item: QTableWidgetItem):
         row = item.row()
         if 0 <= row < len(self.current_timeline):
+            self._select_scene(row)
             sc = self.current_timeline[row]
             img = sc.get("image")
             if img and img.exists():

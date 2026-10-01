@@ -20,6 +20,8 @@ Cho phép người dùng lấy ảnh cảnh, voice, phụ đề SRT và kịch b
 
    **Model gợi ý: GPT-6 Sol — High.** Phù hợp triển khai nhiều widget PyQt6 và nối tương tác theo cấu trúc đã chốt. Có thể dùng GPT-6 Luna — Medium cho sửa nhãn, màu sắc và khoảng cách sau đó.
 
+   **Trạng thái: Đã hoàn thành bước 2.** Tab Bước 4 có thư viện ảnh/voice/SRT/kịch bản, preview ảnh cảnh, bảng thuộc tính, dải clip theo thời lượng và bảng timeline chi tiết. Chọn cảnh ở dải clip hoặc bảng để xem ảnh, thời gian và phụ đề của bản dựng đã lưu. Thanh thao tác phân tích, tạo lại từ nguồn và xuất MP4 luôn hiện phía trên workspace. Preview hiện là ảnh tĩnh theo cảnh được chọn; phát voice, tua playhead và đồng bộ phụ đề thuộc bước 3.
+
 3. **Làm preview đồng bộ:** Kéo playhead hoặc phát voice phải hiển thị đúng ảnh và phụ đề tại thời điểm tương ứng. Thêm ảnh thu nhỏ và thước thời gian để dễ điều hướng.
 
    **Model gợi ý: GPT-6 Sol — High.** Cần xử lý phát/dừng, tua và đồng bộ thời gian. Chuyển sang GPT-6 Astra — High nếu gặp lệch tiếng/hình, giật preview hoặc lỗi luồng khó xác định.

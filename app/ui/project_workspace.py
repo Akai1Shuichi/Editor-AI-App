@@ -126,7 +126,7 @@ class ProjectWorkspace(QWidget):
         self.inner_tabs.addTab(self.watermark_tab, "1  Ảnh")
         self.inner_tabs.addTab(self.tts_tab, "2  Giọng nói")
         self.inner_tabs.addTab(self.scene_tab, "3  Kịch bản cảnh")
-        self.inner_tabs.addTab(self.video_tab, "4  Xuất video")
+        self.inner_tabs.addTab(self.video_tab, "4  Dựng video")
         workspace_layout.addWidget(self.inner_tabs, stretch=1)
         self.stack.addWidget(self.workspace_page)
 
@@ -239,9 +239,9 @@ class ProjectWorkspace(QWidget):
 
         vid_c = summary["videos_count"]
         if vid_c > 0:
-            self.inner_tabs.setTabText(3, f"4  Xuất video ({vid_c}) ✓")
+            self.inner_tabs.setTabText(3, f"4  Dựng video ({vid_c}) ✓")
         else:
-            self.inner_tabs.setTabText(3, "4  Xuất video")
+            self.inner_tabs.setTabText(3, "4  Dựng video")
 
     def save_project_manually(self, silent: bool = False):
         """Lưu lại toàn bộ dữ liệu hiện thời từ các tab vào dự án."""
@@ -333,7 +333,7 @@ class ProjectWorkspace(QWidget):
         self.inner_tabs.setTabText(0, "1  Ảnh")
         self.inner_tabs.setTabText(1, "2  Giọng nói")
         self.inner_tabs.setTabText(2, "3  Kịch bản cảnh")
-        self.inner_tabs.setTabText(3, "4  Xuất video")
+        self.inner_tabs.setTabText(3, "4  Dựng video")
         self.project_changed.emit("")
 
     def _has_running_task(self) -> bool:
