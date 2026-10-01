@@ -78,6 +78,8 @@ Mỗi dự án được quản lý độc lập tại `projects/<ten_du_an>/`:
 projects/<ten_du_an>/
 ├── project.json          # Cấu hình dự án (tên, tỉ lệ khung hình, fps, ngày tạo)
 ├── scenes.json           # Được tạo khi người dùng nhập kịch bản dạng text
+├── edit.json             # Bản dựng Bước 4: track ảnh/voice/phụ đề và cấu hình xuất
+├── edit.json.bak         # Bản dựng trước lần tạo lại từ nguồn gần nhất (nếu có)
 ├── images/               # Thư mục ảnh gốc
 │   └── clean/            # Thư mục ảnh sạch đã gỡ watermark (được ưu tiên ghép vào video)
 ├── voice/                # File âm thanh (.mp3, .wav) và phụ đề (.srt)

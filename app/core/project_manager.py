@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any
 
 from app import config
+from app.core import edit_document
 
 VALID_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 VALID_AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg"}
@@ -95,6 +96,21 @@ class Project:
     @property
     def metadata_path(self) -> Path:
         return self.path / "project.json"
+
+    @property
+    def edit_path(self) -> Path:
+        return self.path / "edit.json"
+
+    def load_edit_document(self) -> Optional[Dict[str, Any]]:
+        """Missing drafts are normal for old projects; invalid drafts raise."""
+        if not self.edit_path.exists():
+            return None
+        return edit_document.load_document(self.edit_path)
+
+    def save_edit_document(self, document: Dict[str, Any], *,
+                           overwrite: bool = False, backup: bool = False):
+        edit_document.save_document(self.edit_path, document,
+                                    overwrite=overwrite, backup=backup)
 
     # ================= QUẢN LÝ TÀI NGUYÊN =================
     def get_clean_images(self) -> List[Path]:

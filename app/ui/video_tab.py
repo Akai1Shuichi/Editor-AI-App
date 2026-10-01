@@ -1,4 +1,6 @@
 from pathlib import Path
+from copy import deepcopy
+import math
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -12,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from app import config
-from app.core import video_creator
+from app.core import edit_document, video_creator
 from app.core.platform_utils import open_path
 
 
@@ -76,8 +78,14 @@ class VideoTab(QWidget):
         self.last_output_video: Optional[Path] = None
         self.project = None
         self._json_data = None
+        self.edit_document: Optional[Dict[str, Any]] = None
+        self.auto_save = False
+        self._loading_edit = False
+        self._edit_dirty = False
 
         self.init_ui()
+        self.combo_ratio.currentIndexChanged.connect(self._on_export_settings_changed)
+        self.combo_fps.currentIndexChanged.connect(self._on_export_settings_changed)
         self.auto_detect_defaults()
 
     def init_ui(self):
@@ -256,6 +264,13 @@ class VideoTab(QWidget):
         self.btn_preview.clicked.connect(self.analyze_timeline)
         act_layout.addWidget(self.btn_preview)
 
+        self.btn_rebuild = QPushButton("Tạo lại timeline từ nguồn")
+        self.btn_rebuild.setObjectName("btn_subtle")
+        self.btn_rebuild.setToolTip("Dùng ảnh, voice, SRT và kịch bản đang chọn để tạo lại bản dựng")
+        self.btn_rebuild.clicked.connect(self.rebuild_timeline)
+        self.btn_rebuild.setVisible(False)
+        act_layout.addWidget(self.btn_rebuild)
+
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
@@ -385,6 +400,11 @@ class VideoTab(QWidget):
     # ================= TỰ ĐỘNG PHÁT HIỆN & BROWSE =================
     def auto_detect_defaults(self):
         """Tự động tìm kiếm các asset mới nhất — ưu tiên từ dự án hiện tại."""
+        if self.edit_document is not None:
+            return
+        if self.project and self.project.edit_path.exists():
+            self._load_saved_edit()
+            return
         valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
         # ========== 1. Tìm ảnh ==========
@@ -474,14 +494,18 @@ class VideoTab(QWidget):
 
     def set_project(self, project):
         """Đồng bộ hóa toàn bộ tài nguyên đầu vào theo Dự Án được chọn."""
-        previous_slug = getattr(self.project, "slug", None)
-        next_slug = getattr(project, "slug", None)
-        if previous_slug != next_slug and hasattr(self, "table"):
-            self.table.setRowCount(0)
-            self.current_timeline = []
-            self.last_output_video = None
-            self.panel_result.setVisible(False)
+        self.edit_document = None
+        self._edit_dirty = False
+        self.current_timeline = []
+        self.total_audio_duration = 0.0
+        self.last_output_video = None
+        self.table.setRowCount(0)
+        self.lbl_summary_scenes.setText("0 cảnh")
+        self.lbl_summary_duration.setText("00:00.000")
+        self.lbl_summary_images.setText("Chưa phân tích")
+        self.panel_result.setVisible(False)
         self.project = project
+        self.btn_rebuild.setVisible(project is not None)
         self._json_data = None
         if not project:
             if hasattr(self, "lbl_project_badge"):
@@ -542,7 +566,9 @@ class VideoTab(QWidget):
         self.txt_output_path.setText(str(out_p.resolve()))
 
         # Tự động phân tích nếu các file đều hợp lệ
-        if eff_img_dir.exists() and voice and srt and self.txt_json_file.text():
+        if project.edit_path.exists():
+            self._load_saved_edit()
+        elif eff_img_dir.exists() and voice and srt and self.txt_json_file.text():
             self.analyze_timeline()
         else:
             self.lbl_status.setText(f"Đã chuyển sang dự án '{project.name}'.")
@@ -558,6 +584,13 @@ class VideoTab(QWidget):
 
     def on_input_changed(self):
         self.panel_result.setVisible(False)
+        if self._loading_edit:
+            return
+        if self.edit_document is not None:
+            self.lbl_status.setText("Đã đổi nguồn. Bản dựng hiện tại được giữ; chọn 'Tạo lại timeline từ nguồn' để áp dụng.")
+        else:
+            self.current_timeline = []
+            self.table.setRowCount(0)
 
     def set_audio_and_srt(self, audio_path: str, srt_path: str):
         """Được gọi từ MainWindow hoặc TTSTab khi vừa tạo xong voice & srt."""
@@ -584,9 +617,78 @@ class VideoTab(QWidget):
         """Nhận nội dung JSON hoặc đường dẫn file kịch bản từ bước 3."""
         self._json_data = None if isinstance(json_source, str) else json_source
         self.txt_json_file.setText(json_source if isinstance(json_source, str) else "")
-        self.current_timeline = []
-        self.table.setRowCount(0)
         self.on_input_changed()
+
+    def set_auto_save(self, enabled: bool):
+        self.auto_save = enabled
+
+    def _on_export_settings_changed(self):
+        if self._loading_edit or self.edit_document is None:
+            return
+        self.edit_document["settings"].update({
+            "aspect_ratio": self.combo_ratio.currentData(),
+            "fps": self.combo_fps.currentData(),
+        })
+        self._edit_dirty = True
+        if self.auto_save:
+            self.save_current_state()
+
+    def save_current_state(self) -> bool:
+        if not self.project or self.edit_document is None or not self._edit_dirty:
+            return True
+        try:
+            self.project.save_edit_document(self.edit_document, overwrite=True)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Không thể lưu bản dựng", str(exc))
+            return False
+        self._edit_dirty = False
+        return True
+
+    def _apply_edit_document(self, document):
+        timeline = edit_document.document_timeline(self.project.path, document)
+        self._loading_edit = True
+        try:
+            sources = document["sources"]
+            self.txt_image_dir.setText(str(edit_document.media_path(self.project.path, sources["image_dir"])))
+            voice = document["tracks"]["audio"][0]
+            self.txt_audio_file.setText(str(edit_document.media_path(self.project.path, voice["media"])))
+            self.txt_srt_file.setText(str(edit_document.media_path(self.project.path, sources["srt"])))
+            self.combo_ratio.setCurrentIndex(self.combo_ratio.findData(document["settings"]["aspect_ratio"]))
+            self.combo_fps.setCurrentIndex(self.combo_fps.findData(document["settings"]["fps"]))
+            self.edit_document = document
+            self.current_timeline = timeline
+            self.total_audio_duration = document["duration"]
+            self._edit_dirty = False
+        finally:
+            self._loading_edit = False
+        self._show_timeline(timeline)
+
+    def _load_saved_edit(self) -> bool:
+        try:
+            document = self.project.load_edit_document()
+            if document is None:
+                return False
+            self._apply_edit_document(document)
+        except (OSError, ValueError) as exc:
+            self.lbl_status.setText(f"Không thể mở bản dựng: {exc} File đã lưu được giữ nguyên.")
+            return False
+        self.lbl_status.setText("Đã mở bản dựng đã lưu. Chọn 'Tạo lại timeline từ nguồn' nếu muốn thay bản dựng.")
+        return True
+
+    def rebuild_timeline(self):
+        if self.worker and self.worker.isRunning():
+            return
+        if self.project and (self.edit_document is not None or self.project.edit_path.exists()):
+            answer = QMessageBox.question(
+                self, "Tạo lại bản dựng",
+                "Tạo lại timeline sẽ thay các chỉnh sửa bằng ảnh, voice, SRT và kịch bản đang chọn.\n"
+                "Bản đã lưu trước đó sẽ được sao lưu vào edit.json.bak. Tiếp tục?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self._build_timeline_from_sources(replace_existing=True)
 
     def browse_image_dir(self):
         init_dir = self.txt_image_dir.text().strip() or str(config.DOWNLOADS_DIR)
@@ -646,6 +748,16 @@ class VideoTab(QWidget):
     # ================= PHÂN TÍCH TIMELINE =================
     def analyze_timeline(self) -> bool:
         """Phân tích các tệp đầu vào và nạp dữ liệu vào bảng Timeline."""
+        if self.edit_document is not None:
+            self.current_timeline = edit_document.document_timeline(self.project.path, self.edit_document)
+            self._show_timeline(self.current_timeline)
+            self.lbl_status.setText("Đang dùng bản dựng hiện tại. Chọn 'Tạo lại timeline từ nguồn' để áp dụng nguồn mới.")
+            return True
+        if self.project and self.project.edit_path.exists():
+            return self._load_saved_edit()
+        return self._build_timeline_from_sources()
+
+    def _build_timeline_from_sources(self, *, replace_existing=False) -> bool:
         img_dir_str = self.txt_image_dir.text().strip().strip('"')
         aud_file_str = self.txt_audio_file.text().strip().strip('"')
         srt_file_str = self.txt_srt_file.text().strip().strip('"')
@@ -677,22 +789,37 @@ class VideoTab(QWidget):
         try:
             self.lbl_status.setText("Đang đọc phụ đề và đo thời lượng âm thanh...")
             subtitles = video_creator.parse_srt_file(srt_path)
-            self.total_audio_duration = video_creator.get_audio_duration(ffmpeg_exe, audio_path)
+            total_duration = video_creator.get_audio_duration(ffmpeg_exe, audio_path)
             if self._json_data is not None:
                 scenes = video_creator.parse_json_data(self._json_data, sorted(subtitles))
             else:
                 scenes = video_creator.parse_json_mapping(Path(json_file_str), sorted(subtitles))
-            timeline = video_creator.compute_timeline(scenes, subtitles, self.total_audio_duration, image_dir)
+            timeline = video_creator.compute_timeline(scenes, subtitles, total_duration, image_dir)
+            if self.project:
+                document = edit_document.create_document(
+                    self.project.path, timeline, subtitles, image_dir, audio_path, srt_path,
+                    self.combo_ratio.currentData(), self.combo_fps.currentData(), total_duration,
+                )
+                self.project.save_edit_document(document, overwrite=replace_existing, backup=replace_existing)
+                self._apply_edit_document(document)
         except Exception as e:
             QMessageBox.warning(self, "Lỗi phân tích", f"Không thể phân tích dữ liệu: {e}")
             self.lbl_status.setText(f"Lỗi: {e}")
             return False
 
-        self.current_timeline = timeline
+        if not self.project:
+            self.current_timeline = timeline
+            self.total_audio_duration = total_duration
+            self._show_timeline(timeline)
+        else:
+            self.lbl_status.setText("Đã tạo và lưu bản dựng vào edit.json.")
+        return True
+
+    def _show_timeline(self, timeline):
         self.populate_table(timeline)
 
         # Cập nhật thông số tóm tắt
-        missing_count = sum(1 for item in timeline if item["image"] is None)
+        missing_count = sum(1 for item in timeline if item["image"] is None or not item["image"].is_file())
         total_scenes = len(timeline)
 
         self.lbl_summary_scenes.setText(f"{total_scenes} cảnh")
@@ -706,8 +833,6 @@ class VideoTab(QWidget):
             self.lbl_summary_images.setText(f"⚠ Thiếu {missing_count}/{total_scenes} ảnh")
             self.lbl_summary_images.setStyleSheet("background-color: #450a0a; border: 1px solid #7f1d1d; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #f87171; font-weight: 600;")
             self.lbl_status.setText(f"Cảnh báo: Có {missing_count} cảnh chưa tìm thấy ảnh trong thư mục.")
-
-        return True
 
     def populate_table(self, timeline: List[Dict[str, Any]]):
         """Nạp dữ liệu mốc thời gian vào QTableWidget."""
@@ -733,11 +858,11 @@ class VideoTab(QWidget):
 
             # File ảnh
             img_p = item["image"]
-            if img_p:
+            if img_p and img_p.is_file():
                 img_item = QTableWidgetItem(f"✓ {img_p.name}")
                 img_item.setForeground(QColor("#34d399"))
             else:
-                img_item = QTableWidgetItem("✗ CHƯA CÓ ẢNH")
+                img_item = QTableWidgetItem(f"✗ {img_p.name}" if img_p else "✗ CHƯA CÓ ẢNH")
                 img_item.setForeground(QColor("#f87171"))
             self.table.setItem(row, 3, img_item)
 
@@ -770,11 +895,27 @@ class VideoTab(QWidget):
     # ================= TIẾN HÀNH GHÉP VIDEO =================
     def start_render(self):
         """Bắt đầu ghép video bằng FFmpeg."""
+        if self.worker and self.worker.isRunning():
+            return
         if not self.current_timeline:
             if not self.analyze_timeline():
                 return
 
-        missing = [it for it in self.current_timeline if it["image"] is None]
+        if self.edit_document is not None:
+            self.current_timeline = edit_document.document_timeline(self.project.path, self.edit_document)
+            # The existing concat renderer only supports a continuous image sequence.
+            end = 0.0
+            for clip in self.current_timeline:
+                if not math.isclose(clip["start"], end, abs_tol=0.001):
+                    QMessageBox.warning(self, "Chưa thể xuất bản dựng", "Bộ xuất hiện tại cần các cảnh nối tiếp, không có khoảng trống hoặc chồng lấn.")
+                    return
+                end = clip["end"]
+
+        render_timeline = deepcopy(self.current_timeline)
+        for clip in render_timeline:
+            if clip["image"] is not None and not clip["image"].is_file():
+                clip["image"] = None
+        missing = [it for it in render_timeline if it["image"] is None]
         if missing:
             reply = QMessageBox.question(
                 self,
@@ -793,12 +934,18 @@ class VideoTab(QWidget):
         output_path = Path(out_str)
 
         audio_path = Path(self.txt_audio_file.text().strip().strip('"'))
+        if self.edit_document is not None:
+            audio_path = edit_document.media_path(self.project.path, self.edit_document["tracks"]["audio"][0]["media"])
+        if not audio_path.is_file():
+            QMessageBox.warning(self, "Thiếu voice", f"Không tìm thấy file voice của bản dựng: {audio_path}")
+            return
         aspect_ratio = self.combo_ratio.currentData() or "16:9"
         fps = int(self.combo_fps.currentData() or 30)
 
         self.btn_start.setEnabled(False)
         self.btn_start.setVisible(False)
         self.btn_preview.setEnabled(False)
+        self.btn_rebuild.setEnabled(False)
         self.btn_cancel.setEnabled(True)
         self.btn_cancel.setVisible(True)
         self.panel_result.setVisible(False)
@@ -806,7 +953,7 @@ class VideoTab(QWidget):
         self.lbl_status.setText("Đang khởi tạo FFmpeg...")
 
         self.worker = VideoRenderWorker(
-            timeline=self.current_timeline,
+            timeline=render_timeline,
             audio_path=audio_path,
             output_path=output_path,
             total_audio_duration=self.total_audio_duration,
@@ -831,6 +978,7 @@ class VideoTab(QWidget):
         self.btn_start.setEnabled(True)
         self.btn_start.setVisible(True)
         self.btn_preview.setEnabled(True)
+        self.btn_rebuild.setEnabled(True)
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.setVisible(False)
 

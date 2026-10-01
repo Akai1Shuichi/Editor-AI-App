@@ -176,6 +176,7 @@ class ProjectWorkspace(QWidget):
         self.scene_tab.set_project(project)
         self.tts_tab.set_auto_save(self.action_auto_save.isChecked())
         self.scene_tab.set_auto_save(self.action_auto_save.isChecked())
+        self.video_tab.set_auto_save(self.action_auto_save.isChecked())
         self.project_changed.emit(project.slug)
         self.refresh_pipeline_badges()
 
@@ -183,6 +184,7 @@ class ProjectWorkspace(QWidget):
         """Khi người dùng bật/tắt checkbox Tự động lưu."""
         self.tts_tab.set_auto_save(checked)
         self.scene_tab.set_auto_save(checked)
+        self.video_tab.set_auto_save(checked)
         if checked:
             self.save_project_manually(silent=True)
 
@@ -254,6 +256,8 @@ class ProjectWorkspace(QWidget):
         if hasattr(self.scene_tab, "save_current_state"):
             self.scene_tab.save_current_state()
 
+        if not self.video_tab.save_current_state():
+            return
         self.current_project.save_metadata()
         self.refresh_pipeline_badges()
         self.lbl_updated.setText(self._project_meta_text())
