@@ -922,6 +922,56 @@ QMenu::item:selected {
     border-bottom: 2px solid #4f7cff;
     color: #f3f5f7;
 }
+
+/* ================= VIDEO EDITOR ================= */
+#video_tab { background: #12151b; }
+#video_tab QLabel#video_workspace_title { font-size: 18px; font-weight: 600; color: #f3f5f7; }
+#video_tab QLabel#video_section_title { font-size: 12px; font-weight: 600; color: #cbd2de; }
+#video_tab QLabel#video_field_label { font-size: 12px; color: #9ca6b7; }
+#video_tab QLabel#video_muted, #video_tab QLabel#video_status,
+#video_tab QLabel#video_timeline_meta { font-size: 11px; color: #8994a7; }
+#video_tab QLabel#video_timecode { font-family: 'Consolas', monospace; font-size: 12px; color: #aeb8c8; }
+#video_tab QLabel#video_caption_content { font-size: 12px; color: #cbd2de; }
+#video_tab QFrame#video_preview_panel { background: #0e1117; border: none; border-radius: 8px; }
+#video_tab QLabel#video_preview_canvas { background: #080a0e; border: none; border-radius: 0; }
+#video_tab QScrollArea, #video_tab QScrollArea > QWidget,
+#video_tab QScrollArea > QWidget > QWidget { background: #171b23; border: none; }
+#video_tab QScrollArea#video_timeline_scroll,
+#video_tab QScrollArea#video_timeline_scroll > QWidget,
+#video_tab QScrollArea#video_timeline_scroll > QWidget > QWidget { background: #171b23; }
+#video_tab QTreeWidget#video_asset_tree { background: transparent; border: none; padding: 0; }
+#video_tab QTreeWidget#video_asset_tree::item { min-height: 34px; padding: 4px 2px; border: none; }
+#video_tab QTreeWidget#video_asset_tree::item:selected { background: #26344e; color: #f3f5f7; }
+#video_tab QPushButton { min-height: 28px; padding: 4px 10px; font-size: 12px; }
+#video_tab QPushButton#video_panel_toggle { background: transparent; border: 1px solid #2b3341; color: #aab4c4; }
+#video_tab QPushButton#video_panel_toggle:checked { background: #222b3b; border-color: #384d70; color: #dce7fa; }
+#video_tab QPushButton#video_text_button { background: transparent; border: none; color: #8994a7; }
+#video_tab QPushButton#video_text_button:hover { color: #dce7fa; background: #222b3b; }
+#video_tab QPushButton#video_transport_button { background: #202734; border: none; color: #dce7fa; min-width: 92px; }
+#video_tab QPushButton#video_transport_button:disabled { color: #68748a; background: #171d28; }
+#video_tab QPushButton#video_browse_button { min-width: 34px; padding: 3px 7px; }
+#video_tab QToolButton#video_source_disclosure { background: transparent; border: none; color: #aab4c4; padding: 6px 0; text-align: left; }
+#video_tab QToolButton#video_source_disclosure:hover { color: #f3f5f7; }
+#video_tab QLineEdit, #video_tab QComboBox { min-height: 28px; padding: 4px 8px; background: #11151d; border: 1px solid #2b3341; border-radius: 5px; font-size: 12px; }
+#video_tab QLineEdit:focus, #video_tab QComboBox:focus { border-color: #4f7cff; }
+#video_tab QTabWidget::pane { background: #171b23; border: none; border-radius: 0; padding: 0; }
+#video_tab QTabBar::tab { min-width: 0; min-height: 22px; padding: 5px 14px; margin: 0; background: transparent; border: none; border-bottom: 2px solid transparent; border-radius: 0; font-size: 12px; color: #8994a7; }
+#video_tab QTabBar::tab:selected { color: #e5ebf5; background: #171b23; border-bottom-color: #4f7cff; }
+#video_tab QTabBar::tab:hover { background: #1c2330; color: #e5ebf5; }
+#video_tab QSplitter::handle { background: #12151b; }
+#video_tab QSplitter::handle:hover { background: #33435f; }
+#video_tab QPushButton#video_timeline_clip { min-height: 0; padding: 2px 4px; background: #26344e; border: 1px solid #3d5277; color: #cddaf0; border-radius: 4px; }
+#video_tab QPushButton#video_timeline_clip[selected="true"] { background: #304975; border-color: #7397ec; color: #ffffff; }
+#video_tab QTableWidget#video_scene_table { background: #171b23; border: none; selection-background-color: #26344e; }
+#video_tab QTableWidget#video_scene_table::item { padding: 4px 8px; border-bottom: 1px solid #222938; }
+#video_tab QTableWidget#video_scene_table::item:selected { color: #e8eef8; }
+#video_tab QHeaderView::section { background: #171b23; color: #8994a7; border: none; border-bottom: 1px solid #2b3341; padding: 6px 8px; font-weight: 500; font-size: 11px; }
+#video_tab QSlider::groove:horizontal { height: 4px; background: #2b3341; border-radius: 2px; }
+#video_tab QSlider::sub-page:horizontal { background: #4f7cff; border-radius: 2px; }
+#video_tab QSlider::handle:horizontal { width: 12px; height: 12px; margin: -4px 0; background: #dce7fa; border: none; border-radius: 6px; }
+#video_tab QProgressBar { border: none; background: #242c3b; border-radius: 2px; }
+#video_tab QProgressBar::chunk { background: #4f7cff; border-radius: 2px; }
+#video_tab QFrame#video_result_bar { background: #1b2928; border: none; border-radius: 6px; }
 """
 
 def setup_theme(app: QApplication):

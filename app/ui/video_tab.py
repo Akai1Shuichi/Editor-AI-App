@@ -11,12 +11,13 @@ from PyQt6.QtWidgets import (
     QPushButton, QComboBox, QProgressBar, QFrame, QMessageBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
     QSplitter, QScrollArea, QApplication, QSizePolicy, QTreeWidget,
-    QTreeWidgetItem, QSlider, QCheckBox
+    QTreeWidgetItem, QSlider, QToolButton, QTabWidget
 )
 
 from app import config
 from app.core import edit_document, video_creator
 from app.core.platform_utils import open_path
+from app.ui.widgets import ToggleSwitch
 
 
 class VideoRenderWorker(QThread):
@@ -167,7 +168,7 @@ class TimeRuler(QWidget):
         super().__init__()
         self.duration = 0.0
         self.position = 0.0
-        self.setFixedHeight(31)
+        self.setFixedHeight(27)
         self.setMinimumWidth(self.TRACK_OFFSET + 1)
         self.setMouseTracking(True)
 
@@ -184,7 +185,7 @@ class TimeRuler(QWidget):
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor("#171b24"))
         painter.setPen(QPen(QColor("#64748b")))
-        painter.drawText(4, 20, "THỜI GIAN")
+        painter.drawText(4, 20, "GIÂY")
         if self.duration <= 0:
             return
         interval = next((step for step in (1, 2, 5, 10, 15, 30, 60, 120, 300, 600)
@@ -196,7 +197,7 @@ class TimeRuler(QWidget):
             painter.drawText(x + 3, 15, video_creator.format_time(tick).split(".")[0])
             tick += interval
         x = self.TRACK_OFFSET + round(self.position * self.PIXELS_PER_SECOND)
-        painter.setPen(QPen(QColor("#facc15"), 2))
+        painter.setPen(QPen(QColor("#7397ec"), 2))
         painter.drawLine(x, 0, x, self.height())
 
     def mousePressEvent(self, event):
@@ -252,271 +253,151 @@ class VideoTab(QWidget):
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(14, 12, 14, 14)
+        main_layout.setContentsMargins(12, 10, 12, 10)
         main_layout.setSpacing(10)
 
-        # Asset/source column and the edit workspace.
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setObjectName("video_splitter")
+        def title(text):
+            label = QLabel(text)
+            label.setObjectName("video_section_title")
+            return label
 
-        # ================= CỘT TRÁI: ĐẦU VÀO & THIẾT LẬP =================
-        left_scroll = QScrollArea()
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        left_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        left_scroll.setMinimumWidth(480)
-        left_scroll.setMaximumWidth(540)
+        def field(layout, label, widget):
+            caption = QLabel(label)
+            caption.setObjectName("video_field_label")
+            layout.addWidget(caption)
+            layout.addWidget(widget)
 
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(4, 4, 10, 4)
-        left_layout.setSpacing(12)
+        def scroll_page(widget):
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            scroll.setWidget(widget)
+            return scroll
 
-        library = QFrame()
-        library.setProperty("class", "panel")
-        library_layout = QVBoxLayout(library)
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
+        heading = QLabel("Dựng video")
+        heading.setObjectName("video_workspace_title")
+        toolbar.addWidget(heading)
+        toolbar.addStretch()
+        self.btn_sources = QPushButton("Nguồn")
+        self.btn_sources.setObjectName("video_panel_toggle")
+        self.btn_sources.setCheckable(True)
+        self.btn_sources.setToolTip("Mở hoặc thu gọn thư viện và tệp nguồn")
+        toolbar.addWidget(self.btn_sources)
+        self.btn_properties = QPushButton("Thuộc tính")
+        self.btn_properties.setObjectName("video_panel_toggle")
+        self.btn_properties.setCheckable(True)
+        self.btn_properties.setToolTip("Mở hoặc thu gọn thuộc tính cảnh và cấu hình xuất")
+        toolbar.addWidget(self.btn_properties)
+        self.btn_export_settings = QPushButton("Xuất video")
+        self.btn_export_settings.setObjectName("btn_primary")
+        self.btn_export_settings.clicked.connect(self._open_export_settings)
+        toolbar.addWidget(self.btn_export_settings)
+        main_layout.addLayout(toolbar)
+
+        self.workspace_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.workspace_splitter.setObjectName("video_workspace_splitter")
+        self.workspace_splitter.setChildrenCollapsible(False)
+        self.workspace_splitter.setHandleWidth(5)
+
+        library_page = QWidget()
+        library_page.setObjectName("video_library_page")
+        library_layout = QVBoxLayout(library_page)
         library_layout.setContentsMargins(12, 12, 12, 12)
-        library_layout.setSpacing(7)
-        library_title = QLabel("Thư viện asset")
-        library_title.setProperty("class", "panel_title")
-        library_layout.addWidget(library_title)
+        library_layout.setSpacing(10)
+        library_layout.addWidget(title("Thư viện"))
+        self.lbl_project_badge = QLabel("Chưa chọn dự án")
+        self.lbl_project_badge.setObjectName("video_muted")
+        self.lbl_project_badge.setWordWrap(True)
+        library_layout.addWidget(self.lbl_project_badge)
         self.asset_tree = QTreeWidget()
         self.asset_tree.setObjectName("video_asset_tree")
         self.asset_tree.setHeaderHidden(True)
-        self.asset_tree.setIconSize(QSize(34, 34))
-        self.asset_tree.setMinimumHeight(180)
+        self.asset_tree.setIconSize(QSize(40, 32))
+        self.asset_tree.setMinimumHeight(140)
+        self.asset_tree.setIndentation(14)
+        self.asset_tree.setUniformRowHeights(True)
+        self.asset_tree.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         self.asset_tree.itemClicked.connect(self._on_asset_clicked)
-        library_layout.addWidget(self.asset_tree)
-        self.lbl_asset_hint = QLabel("Ảnh, voice và phụ đề của nguồn đang chọn")
-        self.lbl_asset_hint.setProperty("class", "section_label")
-        self.lbl_asset_hint.setWordWrap(True)
+        library_layout.addWidget(self.asset_tree, stretch=1)
+        self.lbl_asset_hint = QLabel("Chọn ảnh để xem trước")
+        self.lbl_asset_hint.setObjectName("video_muted")
         library_layout.addWidget(self.lbl_asset_hint)
-        left_layout.addWidget(library)
 
-        # Card 1: Nạp Tệp Đầu Vào
-        panel_inputs = QFrame()
-        panel_inputs.setProperty("class", "panel")
-        in_layout = QVBoxLayout(panel_inputs)
-        in_layout.setContentsMargins(14, 14, 14, 14)
-        in_layout.setSpacing(10)
-
-        header_row = QHBoxLayout()
-        lbl_in_title = QLabel("1. Tệp Đầu Vào (Assets)")
-        lbl_in_title.setProperty("class", "panel_title")
-        header_row.addWidget(lbl_in_title)
-        header_row.addStretch()
-
-        self.lbl_project_badge = QLabel("📁 Chưa chọn dự án")
-        self.lbl_project_badge.setStyleSheet("color: #6b7280; font-size: 11px;")
-        header_row.addWidget(self.lbl_project_badge)
-        in_layout.addLayout(header_row)
-
-        # 1. Thư mục ảnh
-        lbl_img = QLabel("Thư mục chứa ảnh:")
-        lbl_img.setProperty("class", "section_label")
-        in_layout.addWidget(lbl_img)
-        box_img = QHBoxLayout()
-        box_img.setSpacing(6)
-        self.txt_image_dir = QLineEdit()
-        self.txt_image_dir.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
-        )
-        self.txt_image_dir.setPlaceholderText("Đường dẫn thư mục ảnh (Mặc định: downloads)...")
-        self.txt_image_dir.textChanged.connect(self.on_input_changed)
-        btn_browse_img = QPushButton("Chọn...")
-        btn_browse_img.setSizePolicy(
-            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
-        )
-        btn_browse_img.clicked.connect(self.browse_image_dir)
-        box_img.addWidget(self.txt_image_dir)
-        box_img.addWidget(btn_browse_img)
-        in_layout.addLayout(box_img)
-
-        # 2. File âm thanh
-        lbl_aud = QLabel("File âm thanh voice (.mp3, .wav...):")
-        lbl_aud.setProperty("class", "section_label")
-        in_layout.addWidget(lbl_aud)
-        box_aud = QHBoxLayout()
-        box_aud.setSpacing(6)
-        self.txt_audio_file = QLineEdit()
-        self.txt_audio_file.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
-        )
-        self.txt_audio_file.setPlaceholderText("Đường dẫn file voice .mp3 (Mặc định: downloads)...")
-        self.txt_audio_file.textChanged.connect(self.on_input_changed)
-        btn_browse_aud = QPushButton("Chọn...")
-        btn_browse_aud.setSizePolicy(
-            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
-        )
-        btn_browse_aud.clicked.connect(self.browse_audio_file)
-        box_aud.addWidget(self.txt_audio_file)
-        box_aud.addWidget(btn_browse_aud)
-        in_layout.addLayout(box_aud)
-
-        # 3. File phụ đề SRT
-        lbl_srt = QLabel("File phụ đề khớp thời gian (.srt):")
-        lbl_srt.setProperty("class", "section_label")
-        in_layout.addWidget(lbl_srt)
-        box_srt = QHBoxLayout()
-        box_srt.setSpacing(6)
-        self.txt_srt_file = QLineEdit()
-        self.txt_srt_file.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
-        )
-        self.txt_srt_file.setPlaceholderText("Đường dẫn file .srt (Mặc định: downloads)...")
-        self.txt_srt_file.textChanged.connect(self.on_input_changed)
-        btn_browse_srt = QPushButton("Chọn...")
-        btn_browse_srt.setSizePolicy(
-            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
-        )
-        btn_browse_srt.clicked.connect(self.browse_srt_file)
-        box_srt.addWidget(self.txt_srt_file)
-        box_srt.addWidget(btn_browse_srt)
-        in_layout.addLayout(box_srt)
-
-        # Đường dẫn JSON được quản lý ở bước 3 và chỉ giữ nội bộ tại đây.
-        self.txt_json_file = QLineEdit()
+        self.btn_edit_sources = QToolButton()
+        self.btn_edit_sources.setObjectName("video_source_disclosure")
+        self.btn_edit_sources.setText("Đổi tệp nguồn")
+        self.btn_edit_sources.setCheckable(True)
+        self.btn_edit_sources.setArrowType(Qt.ArrowType.RightArrow)
+        self.btn_edit_sources.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        library_layout.addWidget(self.btn_edit_sources)
+        self.source_fields = QWidget()
+        source_layout = QVBoxLayout(self.source_fields)
+        source_layout.setContentsMargins(0, 0, 0, 0)
+        source_layout.setSpacing(6)
+        for attribute, caption, placeholder, callback in (
+            ("txt_image_dir", "Thư mục ảnh", "Chọn thư mục ảnh", self.browse_image_dir),
+            ("txt_audio_file", "Voice", "Chọn file âm thanh", self.browse_audio_file),
+            ("txt_srt_file", "Phụ đề SRT", "Chọn file SRT", self.browse_srt_file),
+        ):
+            label = QLabel(caption)
+            label.setObjectName("video_field_label")
+            source_layout.addWidget(label)
+            row = QHBoxLayout()
+            row.setSpacing(5)
+            edit = QLineEdit()
+            edit.setPlaceholderText(placeholder)
+            edit.setMinimumWidth(0)
+            edit.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            edit.textChanged.connect(self.on_input_changed)
+            setattr(self, attribute, edit)
+            browse = QPushButton("Chọn")
+            browse.setObjectName("video_browse_button")
+            browse.clicked.connect(callback)
+            row.addWidget(edit, stretch=1)
+            row.addWidget(browse)
+            source_layout.addLayout(row)
+        self.txt_json_file = QLineEdit(self)
+        self.txt_json_file.hide()
         self.txt_json_file.textChanged.connect(self.on_input_changed)
-
-        left_layout.addWidget(panel_inputs)
-
-        # Card 2: Cấu hình Video
-        panel_cfg = QFrame()
-        panel_cfg.setProperty("class", "panel")
-        cfg_layout = QVBoxLayout(panel_cfg)
-        cfg_layout.setContentsMargins(14, 14, 14, 14)
-        cfg_layout.setSpacing(10)
-
-        lbl_cfg_title = QLabel("2. Cấu Hình Xuất Video")
-        lbl_cfg_title.setProperty("class", "panel_title")
-        cfg_layout.addWidget(lbl_cfg_title)
-
-        # Tỉ lệ khung hình
-        lbl_ratio = QLabel("Tỉ lệ khung hình:")
-        lbl_ratio.setProperty("class", "section_label")
-        cfg_layout.addWidget(lbl_ratio)
-        self.combo_ratio = QComboBox()
-        self.combo_ratio.addItem("16:9 (Ngang 1920x1080 - YouTube, Facebook)", "16:9")
-        self.combo_ratio.addItem("9:16 (Dọc 1080x1920 - TikTok, Shorts, Reels)", "9:16")
-        self.combo_ratio.addItem("1:1 (Vuông 1080x1080 - Instagram, Square)", "1:1")
-        cfg_layout.addWidget(self.combo_ratio)
-
-        # FPS
-        lbl_fps = QLabel("Tốc độ khung hình (FPS):")
-        lbl_fps.setProperty("class", "section_label")
-        cfg_layout.addWidget(lbl_fps)
-        self.combo_fps = QComboBox()
-        self.combo_fps.addItem("30 FPS (Khuyên dùng - Chuẩn & Nhẹ)", 30)
-        self.combo_fps.addItem("60 FPS (Mượt mà nhất)", 60)
-        self.combo_fps.addItem("24 FPS (Chuẩn Điện ảnh)", 24)
-        cfg_layout.addWidget(self.combo_fps)
-
-        self.chk_subtitles = QCheckBox("Bật phụ đề trên video")
-        self.chk_subtitles.setChecked(False)
-        self.chk_subtitles.setToolTip("Hiển thị phụ đề trong preview và đưa phụ đề lên video xuất.")
-        cfg_layout.addWidget(self.chk_subtitles)
-
-        # Đường dẫn xuất
-        lbl_out = QLabel("Tên & Đường dẫn file video xuất ra:")
-        lbl_out.setProperty("class", "section_label")
-        cfg_layout.addWidget(lbl_out)
-        box_out = QHBoxLayout()
-        box_out.setSpacing(6)
-        self.txt_output_path = QLineEdit()
-        self.txt_output_path.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
-        )
-        self.txt_output_path.setPlaceholderText("Đường dẫn file .mp4 xuất ra...")
-        btn_browse_out = QPushButton("Đổi...")
-        btn_browse_out.setSizePolicy(
-            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
-        )
-        btn_browse_out.clicked.connect(self.browse_output_file)
-        box_out.addWidget(self.txt_output_path)
-        box_out.addWidget(btn_browse_out)
-        cfg_layout.addLayout(box_out)
-
-        left_layout.addWidget(panel_cfg)
-
-        # Pinned workspace toolbar: source analysis and export stay visible.
-        panel_act = QFrame()
-        panel_act.setProperty("class", "panel")
-        act_layout = QVBoxLayout(panel_act)
-        act_layout.setContentsMargins(12, 8, 12, 8)
-        act_layout.setSpacing(5)
-
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
-
-        self.btn_preview = QPushButton("Phân tích timeline")
+        self.source_fields.hide()
+        self.btn_edit_sources.toggled.connect(self.source_fields.setVisible)
+        self.btn_edit_sources.toggled.connect(lambda expanded: self.btn_edit_sources.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow))
+        library_layout.addWidget(self.source_fields)
+        self.btn_preview = QPushButton("Tạo timeline")
         self.btn_preview.setObjectName("btn_subtle")
         self.btn_preview.clicked.connect(self.analyze_timeline)
-        btn_row.addWidget(self.btn_preview)
-
+        library_layout.addWidget(self.btn_preview)
         self.btn_rebuild = QPushButton("Tạo lại từ nguồn")
-        self.btn_rebuild.setObjectName("btn_subtle")
-        self.btn_rebuild.setToolTip("Dùng ảnh, voice, SRT và kịch bản đang chọn để tạo lại bản dựng")
+        self.btn_rebuild.setObjectName("video_text_button")
+        self.btn_rebuild.setToolTip("Tạo lại bản dựng từ tệp nguồn; bản cũ được sao lưu")
         self.btn_rebuild.clicked.connect(self.rebuild_timeline)
-        self.btn_rebuild.setVisible(False)
-        btn_row.addWidget(self.btn_rebuild)
-        btn_row.addStretch()
+        self.btn_rebuild.hide()
+        library_layout.addWidget(self.btn_rebuild)
+        self.source_panel = scroll_page(library_page)
+        self.source_panel.setObjectName("video_source_panel")
+        self.source_panel.setMinimumWidth(210)
+        self.source_panel.setMaximumWidth(290)
+        self.workspace_splitter.addWidget(self.source_panel)
 
-        self.btn_start = QPushButton("Xuất MP4")
-        self.btn_start.setObjectName("btn_primary")
-        self.btn_start.setMinimumHeight(32)
-        self.btn_start.clicked.connect(self.start_render)
-        btn_row.addWidget(self.btn_start)
-
-        self.btn_cancel = QPushButton("⛔  Hủy")
-        self.btn_cancel.setObjectName("btn_danger")
-        self.btn_cancel.setMinimumHeight(32)
-        self.btn_cancel.setEnabled(False)
-        self.btn_cancel.setVisible(False)
-        self.btn_cancel.clicked.connect(self.cancel_render)
-        btn_row.addWidget(self.btn_cancel)
-
-        act_layout.addLayout(btn_row)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setMaximumHeight(12)
-        act_layout.addWidget(self.progress_bar)
-
-        self.lbl_status = QLabel("Sẵn sàng.")
-        self.lbl_status.setStyleSheet("color: #9ca3af; font-size: 11px;")
-        self.lbl_status.setWordWrap(True)
-        act_layout.addWidget(self.lbl_status)
-
-        main_layout.addWidget(panel_act)
-        left_layout.addStretch()
-
-        left_scroll.setWidget(left_widget)
-        splitter.addWidget(left_scroll)
-
-        # ================= PREVIEW, INSPECTOR & TIMELINE =================
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(8, 4, 4, 4)
-        right_layout.setSpacing(10)
-
-        top_splitter = QSplitter(Qt.Orientation.Horizontal)
-        top_splitter.setObjectName("video_top_splitter")
         preview_panel = QFrame()
-        preview_panel.setProperty("class", "panel")
+        preview_panel.setObjectName("video_preview_panel")
+        preview_panel.setMinimumWidth(260)
         preview_layout = QVBoxLayout(preview_panel)
-        preview_layout.setContentsMargins(10, 10, 10, 10)
-        preview_layout.setSpacing(6)
-        preview_title = QLabel("Màn hình preview")
-        preview_title.setProperty("class", "panel_title")
-        preview_layout.addWidget(preview_title)
+        preview_layout.setContentsMargins(12, 10, 12, 10)
+        preview_layout.setSpacing(10)
+        preview_layout.addWidget(title("Xem trước"))
         self.preview_image = PreviewImage()
+        self.preview_image.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.preview_image.setMinimumHeight(80)
         preview_layout.addWidget(self.preview_image, stretch=1)
         transport = QHBoxLayout()
+        transport.setSpacing(10)
         self.btn_play_pause = QPushButton("▶ Phát voice")
-        self.btn_play_pause.setObjectName("btn_subtle")
+        self.btn_play_pause.setObjectName("video_transport_button")
         self.btn_play_pause.setEnabled(False)
         self.btn_play_pause.clicked.connect(self.toggle_preview_playback)
         transport.addWidget(self.btn_play_pause)
@@ -526,22 +407,31 @@ class VideoTab(QWidget):
         self.slider_playhead.valueChanged.connect(self.seek_preview)
         transport.addWidget(self.slider_playhead, stretch=1)
         preview_layout.addLayout(transport)
-        self.lbl_preview_time = QLabel("00:00.000 / 00:00.000  ·  Chưa chọn cảnh")
-        self.lbl_preview_time.setProperty("class", "section_label")
+        self.lbl_preview_time = QLabel("00:00.000 / 00:00.000")
+        self.lbl_preview_time.setObjectName("video_timecode")
+        self.lbl_preview_time.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_preview_time.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         preview_layout.addWidget(self.lbl_preview_time)
-        top_splitter.addWidget(preview_panel)
+        self.workspace_splitter.addWidget(preview_panel)
 
-        inspector = QFrame()
-        inspector.setProperty("class", "panel")
+        self.inspector_tabs = QTabWidget()
+        self.inspector_tabs.setObjectName("video_inspector_tabs")
+        self.inspector_tabs.setDocumentMode(True)
+        self.inspector_tabs.tabBar().setDrawBase(False)
+        self.inspector_tabs.setMinimumWidth(230)
+        self.inspector_tabs.setMaximumWidth(300)
+        inspector = QWidget()
         inspector_layout = QVBoxLayout(inspector)
-        inspector_layout.setContentsMargins(12, 10, 12, 10)
-        inspector_layout.setSpacing(9)
-        inspector_title = QLabel("Thuộc tính clip")
-        inspector_title.setProperty("class", "panel_title")
-        inspector_layout.addWidget(inspector_title)
-        self.lbl_clip_name = QLabel("Chưa chọn cảnh")
+        inspector_layout.setContentsMargins(14, 14, 14, 14)
+        inspector_layout.setSpacing(10)
+        self.lbl_clip_name = QLabel("Chọn một cảnh")
         self.lbl_clip_name.setObjectName("video_clip_name")
         inspector_layout.addWidget(self.lbl_clip_name)
+        self.lbl_clip_range = QLabel("Thời gian: —")
+        self.lbl_clip_range.setObjectName("video_muted")
+        self.lbl_clip_range.setWordWrap(True)
+        inspector_layout.addWidget(self.lbl_clip_range)
+        inspector_layout.addWidget(title("Ảnh cảnh"))
         self.lbl_clip_media = QLabel("Ảnh: —")
         self.lbl_clip_media.setWordWrap(True)
         self.lbl_clip_media.setMinimumWidth(0)
@@ -551,137 +441,242 @@ class VideoTab(QWidget):
         self.lbl_clip_image_status.setWordWrap(True)
         self.lbl_clip_image_status.setMinimumWidth(0)
         inspector_layout.addWidget(self.lbl_clip_image_status)
-        inspector_layout.addWidget(QLabel("Đường dẫn ảnh"))
-        self.txt_clip_image_path = QLineEdit()
-        self.txt_clip_image_path.setObjectName("video_clip_image_path")
-        self.txt_clip_image_path.setReadOnly(True)
-        self.txt_clip_image_path.setMinimumWidth(0)
-        self.txt_clip_image_path.setPlaceholderText("Chưa có ảnh")
-        inspector_layout.addWidget(self.txt_clip_image_path)
-        self.btn_replace_scene_image = QPushButton("Thay ảnh cảnh này…")
+        self.btn_replace_scene_image = QPushButton("Thay ảnh…")
         self.btn_replace_scene_image.setObjectName("btn_subtle")
         self.btn_replace_scene_image.setEnabled(False)
         self.btn_replace_scene_image.clicked.connect(self.choose_scene_image)
         inspector_layout.addWidget(self.btn_replace_scene_image)
-        self.lbl_clip_range = QLabel("Thời gian: —")
-        self.lbl_clip_range.setWordWrap(True)
-        self.lbl_clip_range.setMinimumWidth(0)
-        inspector_layout.addWidget(self.lbl_clip_range)
+        self.txt_clip_image_path = QLineEdit()
+        self.txt_clip_image_path.setObjectName("video_clip_image_path")
+        self.txt_clip_image_path.setReadOnly(True)
+        self.txt_clip_image_path.setMinimumWidth(0)
+        self.txt_clip_image_path.setPlaceholderText("Đường dẫn ảnh")
+        self.txt_clip_image_path.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        inspector_layout.addWidget(self.txt_clip_image_path)
         self.lbl_clip_motion = QLabel("Chuyển động: —")
+        self.lbl_clip_motion.setObjectName("video_muted")
         inspector_layout.addWidget(self.lbl_clip_motion)
+        inspector_layout.addWidget(title("Nội dung phụ đề"))
         self.lbl_clip_subtitles = QLabel("Phụ đề: —")
         self.lbl_clip_subtitles.setWordWrap(True)
+        self.lbl_clip_subtitles.setTextFormat(Qt.TextFormat.PlainText)
         self.lbl_clip_subtitles.setMinimumWidth(0)
+        self.lbl_clip_subtitles.setObjectName("video_caption_content")
         inspector_layout.addWidget(self.lbl_clip_subtitles)
         inspector_layout.addStretch()
-        top_splitter.addWidget(inspector)
-        top_splitter.setStretchFactor(0, 3)
-        top_splitter.setStretchFactor(1, 2)
-        top_splitter.setSizes([460, 270])
-        right_layout.addWidget(top_splitter, stretch=3)
+        self.inspector_tabs.addTab(scroll_page(inspector), "Cảnh")
 
-        # Header Bảng Timeline + Badge thống kê
-        tb_header_box = QHBoxLayout()
-        lbl_tb_title = QLabel("Timeline bản dựng")
-        lbl_tb_title.setProperty("class", "panel_title")
-        tb_header_box.addWidget(lbl_tb_title)
+        export_page = QWidget()
+        export_layout = QVBoxLayout(export_page)
+        export_layout.setContentsMargins(14, 14, 14, 14)
+        export_layout.setSpacing(10)
+        self.combo_ratio = QComboBox()
+        self.combo_ratio.addItem("16:9 · Ngang", "16:9")
+        self.combo_ratio.addItem("9:16 · Dọc", "9:16")
+        self.combo_ratio.addItem("1:1 · Vuông", "1:1")
+        self.combo_fps = QComboBox()
+        self.combo_fps.addItem("30 FPS", 30)
+        self.combo_fps.addItem("60 FPS", 60)
+        self.combo_fps.addItem("24 FPS", 24)
+        format_row = QHBoxLayout()
+        format_row.setSpacing(8)
+        for label, combo in (("Khung hình", self.combo_ratio), ("FPS", self.combo_fps)):
+            combo.setMinimumWidth(0)
+            combo.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            column = QVBoxLayout()
+            column.setSpacing(6)
+            field(column, label, combo)
+            format_row.addLayout(column, stretch=1)
+        export_layout.addLayout(format_row)
+        subtitle_row = QHBoxLayout()
+        subtitle_row.addWidget(QLabel("Phụ đề trên video"))
+        subtitle_row.addStretch()
+        self.chk_subtitles = ToggleSwitch()
+        self.chk_subtitles.setAccessibleName("Bật phụ đề trên video")
+        self.chk_subtitles.setChecked(False)
+        self.chk_subtitles.setToolTip("Hiện phụ đề trong preview và video xuất. Mặc định tắt.")
+        subtitle_row.addWidget(self.chk_subtitles)
+        export_layout.addLayout(subtitle_row)
+        subtitle_hint = QLabel("Áp dụng cho preview và video xuất")
+        subtitle_hint.setObjectName("video_muted")
+        subtitle_hint.setWordWrap(True)
+        export_layout.addWidget(subtitle_hint)
+        self.txt_output_path = QLineEdit()
+        self.txt_output_path.setMinimumWidth(0)
+        self.txt_output_path.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.txt_output_path.setPlaceholderText("Đường dẫn file .mp4")
+        self.txt_output_path.textChanged.connect(self.txt_output_path.setToolTip)
+        output_label = QLabel("Lưu video tại")
+        output_label.setObjectName("video_field_label")
+        export_layout.addWidget(output_label)
+        output_row = QHBoxLayout()
+        output_row.setSpacing(5)
+        output_row.addWidget(self.txt_output_path, stretch=1)
+        browse_output = QPushButton("Chọn")
+        browse_output.setObjectName("video_browse_button")
+        browse_output.setToolTip("Chọn tên file và thư mục lưu video")
+        browse_output.clicked.connect(self.browse_output_file)
+        output_row.addWidget(browse_output)
+        export_layout.addLayout(output_row)
+        export_hint = QLabel("MP4 · H.264 / AAC")
+        export_hint.setObjectName("video_muted")
+        self.btn_start = QPushButton("Xuất MP4")
+        self.btn_start.setObjectName("btn_primary")
+        self.btn_start.setMinimumHeight(36)
+        self.btn_start.clicked.connect(self.start_render)
+        export_layout.addStretch()
+        export_container = QWidget()
+        export_container_layout = QVBoxLayout(export_container)
+        export_container_layout.setContentsMargins(0, 0, 0, 0)
+        export_container_layout.setSpacing(0)
+        export_container_layout.addWidget(scroll_page(export_page), stretch=1)
+        export_footer = QWidget()
+        export_footer_layout = QVBoxLayout(export_footer)
+        export_footer_layout.setContentsMargins(14, 8, 14, 12)
+        export_footer_layout.setSpacing(6)
+        export_footer_layout.addWidget(export_hint)
+        export_footer_layout.addWidget(self.btn_start)
+        export_container_layout.addWidget(export_footer)
+        self.inspector_tabs.addTab(export_container, "Xuất video")
+        self.workspace_splitter.addWidget(self.inspector_tabs)
+        self.workspace_splitter.setStretchFactor(0, 0)
+        self.workspace_splitter.setStretchFactor(1, 1)
+        self.workspace_splitter.setStretchFactor(2, 0)
+        self.workspace_splitter.setSizes([240, 640, 260])
+        self.btn_sources.toggled.connect(self._toggle_source_panel)
+        self.btn_properties.toggled.connect(self._toggle_inspector_panel)
+        self.btn_sources.setChecked(True)
+        self.btn_properties.setChecked(True)
+        self._layout_mode = None
 
-        tb_header_box.addStretch()
-
+        timeline_panel = QWidget()
+        timeline_layout = QVBoxLayout(timeline_panel)
+        timeline_layout.setContentsMargins(0, 0, 0, 0)
+        timeline_layout.setSpacing(7)
+        summary = QHBoxLayout()
+        summary.setSpacing(16)
+        summary.addWidget(title("Timeline"))
         self.lbl_summary_scenes = QLabel("0 cảnh")
-        self.lbl_summary_scenes.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #93c5fd;")
-        tb_header_box.addWidget(self.lbl_summary_scenes)
-
         self.lbl_summary_duration = QLabel("00:00.000")
-        self.lbl_summary_duration.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #facc15;")
-        tb_header_box.addWidget(self.lbl_summary_duration)
-
-        self.lbl_summary_images = QLabel("Chưa phân tích")
-        self.lbl_summary_images.setStyleSheet("background-color: #1e2029; border: 1px solid #2d303b; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #9ca3af;")
-        tb_header_box.addWidget(self.lbl_summary_images)
-
-        right_layout.addLayout(tb_header_box)
-
+        self.lbl_summary_images = QLabel("Chưa có bản dựng")
+        for label in (self.lbl_summary_scenes, self.lbl_summary_duration, self.lbl_summary_images):
+            label.setObjectName("video_timeline_meta")
+            summary.addWidget(label)
+        summary.addStretch()
+        timeline_layout.addLayout(summary)
+        self.timeline_views = QTabWidget()
+        self.timeline_views.setObjectName("video_timeline_views")
+        self.timeline_views.setDocumentMode(True)
+        self.timeline_views.tabBar().setDrawBase(False)
         self.timeline_scroll = QScrollArea()
         self.timeline_scroll.setObjectName("video_timeline_scroll")
         self.timeline_scroll.setWidgetResizable(True)
         self.timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.timeline_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.timeline_scroll.setMinimumHeight(98)
+        self.timeline_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.timeline_content = QWidget()
         self.timeline_lanes = QVBoxLayout(self.timeline_content)
-        self.timeline_lanes.setContentsMargins(4, 4, 4, 4)
+        self.timeline_lanes.setContentsMargins(8, 8, 8, 8)
         self.timeline_lanes.setSpacing(4)
         self.time_ruler = TimeRuler()
         self.time_ruler.seek_requested.connect(self.seek_preview)
         self.timeline_scroll.setWidget(self.timeline_content)
-        right_layout.addWidget(self.timeline_scroll)
-
-        # Bảng Table Timeline
+        self.timeline_views.addTab(self.timeline_scroll, "Dải thời gian")
         self.table = QTableWidget()
+        self.table.setObjectName("video_scene_table")
         self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels([
-            "STT", "Scene ID", "Phụ Đề Gán", "File Ảnh Khớp", "Bắt Đầu", "Kết Thúc", "Thời Lượng"
-        ])
+        self.table.setHorizontalHeaderLabels(["#", "Cảnh", "Phụ đề", "Ảnh", "Bắt đầu", "Kết thúc", "Độ dài"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.table.setColumnWidth(0, 48)
-        self.table.setColumnWidth(1, 80)
-        self.table.setColumnWidth(2, 95)
-        self.table.setColumnWidth(4, 85)
-        self.table.setColumnWidth(5, 85)
-        self.table.setColumnWidth(6, 85)
+        for column, width in ((0, 36), (1, 76), (2, 76), (4, 88), (5, 88), (6, 72)):
+            self.table.setColumnWidth(column, width)
+        self.table.verticalHeader().hide()
+        self.table.verticalHeader().setDefaultSectionSize(32)
+        self.table.setShowGrid(False)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.itemClicked.connect(self.on_table_row_clicked)
-        right_layout.addWidget(self.table, stretch=2)
+        self.timeline_views.addTab(self.table, "Danh sách cảnh")
+        timeline_layout.addWidget(self.timeline_views, stretch=1)
+        self.editor_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.editor_splitter.setChildrenCollapsible(False)
+        self.editor_splitter.setHandleWidth(5)
+        self.editor_splitter.addWidget(self.workspace_splitter)
+        self.editor_splitter.addWidget(timeline_panel)
+        timeline_panel.setMinimumHeight(140)
+        self.editor_splitter.setStretchFactor(0, 3)
+        self.editor_splitter.setStretchFactor(1, 1)
+        self.editor_splitter.setSizes([430, 205])
+        main_layout.addWidget(self.editor_splitter, stretch=1)
 
-        # Card Kết quả Video Xuất Ra
         self.panel_result = QFrame()
-        self.panel_result.setProperty("class", "panel")
-        self.panel_result.setStyleSheet("background-color: #15221b; border: 1px solid #166534; border-radius: 8px; padding: 12px;")
-        self.panel_result.setVisible(False)
-        res_layout = QVBoxLayout(self.panel_result)
-        res_layout.setContentsMargins(12, 10, 12, 10)
-        res_layout.setSpacing(8)
-
-        lbl_res_title = QLabel("🎉 GHÉP VIDEO THÀNH CÔNG!")
-        lbl_res_title.setStyleSheet("font-size: 14px; font-weight: 700; color: #4ade80;")
-        res_layout.addWidget(lbl_res_title)
-
-        self.lbl_res_details = QLabel("Thông tin video...")
-        self.lbl_res_details.setStyleSheet("font-size: 12px; color: #d1fae5; line-height: 140%;")
-        res_layout.addWidget(self.lbl_res_details)
-
-        res_btn_box = QHBoxLayout()
-        res_btn_box.setSpacing(8)
-
-        self.btn_open_video = QPushButton("▶  Mở Video Ngay")
-        self.btn_open_video.setObjectName("btn_primary")
+        self.panel_result.setObjectName("video_result_bar")
+        result_layout = QHBoxLayout(self.panel_result)
+        result_layout.setContentsMargins(10, 8, 10, 8)
+        result_layout.setSpacing(8)
+        self.lbl_res_details = QLabel()
+        self.lbl_res_details.setTextFormat(Qt.TextFormat.PlainText)
+        self.lbl_res_details.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        result_layout.addWidget(self.lbl_res_details, stretch=1)
+        self.btn_open_video = QPushButton("Mở video")
+        self.btn_open_video.setObjectName("btn_subtle")
         self.btn_open_video.clicked.connect(self.open_video_file)
-        res_btn_box.addWidget(self.btn_open_video)
-
-        self.btn_open_dir = QPushButton("📂  Mở Thư Mục Chứa")
+        self.btn_open_dir = QPushButton("Thư mục")
+        self.btn_open_dir.setObjectName("btn_subtle")
         self.btn_open_dir.clicked.connect(self.open_output_dir)
-        res_btn_box.addWidget(self.btn_open_dir)
-
-        self.btn_copy_path = QPushButton("📋  Sao Chép Đường Dẫn")
+        self.btn_copy_path = QPushButton("Sao chép")
+        self.btn_copy_path.setObjectName("btn_subtle")
         self.btn_copy_path.clicked.connect(self.copy_output_path)
-        res_btn_box.addWidget(self.btn_copy_path)
-
-        res_btn_box.addStretch()
-        res_layout.addLayout(res_btn_box)
-
-        right_layout.addWidget(self.panel_result)
-
-        splitter.addWidget(right_widget)
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 7)
-        splitter.setSizes([500, 700])
-
-        main_layout.addWidget(splitter)
+        for button in (self.btn_open_video, self.btn_open_dir, self.btn_copy_path):
+            result_layout.addWidget(button)
+        self.panel_result.hide()
+        main_layout.addWidget(self.panel_result)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFixedHeight(4)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.hide()
+        main_layout.addWidget(self.progress_bar)
+        status_row = QHBoxLayout()
+        self.lbl_status = QLabel("Chọn nguồn và tạo timeline để bắt đầu.")
+        self.lbl_status.setObjectName("video_status")
+        self.lbl_status.setTextFormat(Qt.TextFormat.PlainText)
+        self.lbl_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.lbl_status.setWordWrap(True)
+        self.lbl_status.setMaximumHeight(34)
+        status_row.addWidget(self.lbl_status, stretch=1)
+        self.btn_cancel = QPushButton("Hủy xuất")
+        self.btn_cancel.setObjectName("btn_danger")
+        self.btn_cancel.setEnabled(False)
+        self.btn_cancel.hide()
+        self.btn_cancel.clicked.connect(self.cancel_render)
+        status_row.addWidget(self.btn_cancel)
+        main_layout.addLayout(status_row)
         self._refresh_asset_library()
         self._refresh_timeline_tracks()
+
+    def _open_export_settings(self):
+        self.btn_properties.setChecked(True)
+        self.inspector_tabs.setCurrentIndex(1)
+
+    def _toggle_source_panel(self, visible):
+        if visible and self.width() < 850:
+            self.btn_properties.setChecked(False)
+        self.source_panel.setVisible(visible)
+
+    def _toggle_inspector_panel(self, visible):
+        if visible and self.width() < 850:
+            self.btn_sources.setChecked(False)
+        self.inspector_tabs.setVisible(visible)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        mode = 0 if self.width() < 700 else 1 if self.width() < 1000 else 2
+        if mode != self._layout_mode:
+            self._layout_mode = mode
+            self.btn_sources.setChecked(mode == 2)
+            self.btn_properties.setChecked(mode > 0)
 
     def _refresh_asset_library(self):
         """Show the files currently chosen as sources without altering the saved edit."""
@@ -709,6 +704,8 @@ class VideoTab(QWidget):
             item.setToolTip(0, str(path))
             image_group.addChild(item)
         image_group.setText(0, f"Ảnh cảnh ({len(image_files)})")
+        self.lbl_asset_hint.setText("Chọn ảnh để xem trước" if image_files else "Mở 'Đổi tệp nguồn' để chọn ảnh")
+        self.lbl_asset_hint.setWordWrap(True)
 
         for group, kind, line_edit in (
             (voice_group, "audio", self.txt_audio_file),
@@ -732,16 +729,18 @@ class VideoTab(QWidget):
             return
         kind, location = data
         if kind == "image":
+            if self.inspector_tabs.isVisible():
+                self.inspector_tabs.setCurrentIndex(0)
             self._selected_scene = None
             self.table.clearSelection()
             self.preview_image.set_image(Path(location))
             self.preview_image.set_subtitle("")
             self.lbl_preview_time.setText(f"Asset: {Path(location).name}")
             self.lbl_clip_name.setText("Ảnh trong thư viện")
-            self.lbl_clip_media.setText(f"Ảnh: {Path(location).name}")
+            self.lbl_clip_media.setText(Path(location).name)
             self.lbl_clip_media.setToolTip(location)
             status, valid = self._image_status(Path(location))
-            self.lbl_clip_image_status.setText(f"Trạng thái ảnh: {status}")
+            self.lbl_clip_image_status.setText(status)
             self.lbl_clip_image_status.setProperty("valid", valid)
             self.lbl_clip_image_status.style().unpolish(self.lbl_clip_image_status)
             self.lbl_clip_image_status.style().polish(self.lbl_clip_image_status)
@@ -825,7 +824,7 @@ class VideoTab(QWidget):
         voice_ref = (self.edit_document["tracks"]["audio"][0]["media"]
                      if self.edit_document else self.txt_audio_file.text())
         voice_name = Path(voice_ref).name if voice_ref else "Chưa chọn voice"
-        voice_row.addWidget(QLabel(f"▰  {voice_name}  ·  {self.total_audio_duration:.1f}s"))
+        voice_row.addWidget(QLabel(f"{voice_name}  ·  {self.total_audio_duration:.1f}s"))
         voice_row.addStretch()
 
         subtitle_row = lane("SRT")
@@ -840,6 +839,8 @@ class VideoTab(QWidget):
         if not 0 <= row < len(self.current_timeline):
             return
         if seek:
+            if self.inspector_tabs.isVisible():
+                self.inspector_tabs.setCurrentIndex(0)
             self.seek_preview(round(self.current_timeline[row]["start"] * 1000))
             return
         self._selected_scene = row
@@ -848,10 +849,10 @@ class VideoTab(QWidget):
         self.preview_image.set_image(clip.get("image"))
         self.lbl_clip_name.setText(f"Cảnh {row + 1} · {clip['id']}")
         image = clip.get("image")
-        self.lbl_clip_media.setText(f"Ảnh: {image.name if image else 'Chưa có ảnh'}")
+        self.lbl_clip_media.setText(image.name if image else 'Chưa có ảnh')
         self.lbl_clip_media.setToolTip(str(image) if image else "")
         status, valid = self._image_status(image)
-        self.lbl_clip_image_status.setText(f"Trạng thái ảnh: {status}")
+        self.lbl_clip_image_status.setText(status)
         self.lbl_clip_image_status.setProperty("valid", valid)
         self.lbl_clip_image_status.style().unpolish(self.lbl_clip_image_status)
         self.lbl_clip_image_status.style().polish(self.lbl_clip_image_status)
@@ -862,7 +863,13 @@ class VideoTab(QWidget):
             f"{video_creator.format_time(clip['end'])} ({clip['duration']:.2f}s)"
         )
         motion = clip.get("motion") or {"type": "none"}
-        self.lbl_clip_motion.setText(f"Chuyển động: {motion.get('type', 'none')}")
+        motion_names = {
+            "none": "Không", "zoom_in": "Phóng to", "zoom_out": "Thu nhỏ",
+            "pan_left": "Di chuyển trái", "pan_right": "Di chuyển phải",
+            "pan_up": "Di chuyển lên", "pan_down": "Di chuyển xuống",
+            "drift_left": "Trôi trái", "drift_right": "Trôi phải", "shake": "Rung nhẹ",
+        }
+        self.lbl_clip_motion.setText(f"Chuyển động: {motion_names.get(motion.get('type'), 'Không')}")
         subtitle_ids = clip.get("subtitles", [])
         if self.edit_document:
             subtitles = {entry["id"]: entry["text"] for entry in
@@ -870,7 +877,7 @@ class VideoTab(QWidget):
             content = "\n".join(subtitles.get(sub_id, "") for sub_id in subtitle_ids).strip()
         else:
             content = ", ".join(map(str, subtitle_ids))
-        self.lbl_clip_subtitles.setText(f"Phụ đề: {content or '—'}")
+        self.lbl_clip_subtitles.setText(content or '—')
         for index, button in enumerate(self._scene_buttons):
             button.setProperty("selected", index == row)
             button.style().unpolish(button)
@@ -962,7 +969,7 @@ class VideoTab(QWidget):
         self.time_ruler.set_position(position)
         if self.current_timeline:
             scrollbar = self.timeline_scroll.horizontalScrollBar()
-            marker_x = 4 + self.time_ruler.TRACK_OFFSET + round(
+            marker_x = 8 + self.time_ruler.TRACK_OFFSET + round(
                 position * self.time_ruler.PIXELS_PER_SECOND
             )
             viewport_width = self.timeline_scroll.viewport().width()
@@ -1134,6 +1141,7 @@ class VideoTab(QWidget):
         self._playhead_ms = 0
         self.edit_document = None
         self._edit_dirty = False
+        self.btn_preview.setText("Tạo timeline")
         with QSignalBlocker(self.chk_subtitles):
             self.chk_subtitles.setChecked(False)
         self._selected_scene = None
@@ -1321,6 +1329,7 @@ class VideoTab(QWidget):
         return True
 
     def _apply_edit_document(self, document):
+        self.btn_preview.setText("Kiểm tra timeline")
         timeline = edit_document.document_timeline(self.project.path, document)
         self._loading_edit = True
         try:
@@ -1350,7 +1359,7 @@ class VideoTab(QWidget):
         except (OSError, ValueError) as exc:
             self.lbl_status.setText(f"Không thể mở bản dựng: {exc} File đã lưu được giữ nguyên.")
             return False
-        self.lbl_status.setText("Đã mở bản dựng đã lưu. Chọn 'Tạo lại timeline từ nguồn' nếu muốn thay bản dựng.")
+        self.lbl_status.setText("Đã mở bản dựng. Chọn 'Tạo lại từ nguồn' trong thư viện để nhập lại dữ liệu.")
         return True
 
     def rebuild_timeline(self):
@@ -1492,7 +1501,7 @@ class VideoTab(QWidget):
             self.total_audio_duration = total_duration
             self._show_timeline(timeline)
         else:
-            self.lbl_status.setText("Đã tạo và lưu bản dựng vào edit.json.")
+            self.lbl_status.setText("Đã tạo và lưu bản dựng.")
         return True
 
     def _show_timeline(self, timeline):
@@ -1512,12 +1521,12 @@ class VideoTab(QWidget):
         self.lbl_summary_duration.setText(f"{video_creator.format_time(self.total_audio_duration)} ({self.total_audio_duration:.2f}s)")
 
         if problem_count == 0:
-            self.lbl_summary_images.setText(f"✓ Đủ {total_scenes}/{total_scenes} ảnh")
-            self.lbl_summary_images.setStyleSheet("background-color: #064e3b; border: 1px solid #065f46; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #34d399; font-weight: 600;")
+            self.lbl_summary_images.setText(f"Đủ {total_scenes}/{total_scenes} ảnh")
+            self.lbl_summary_images.setStyleSheet("color: #9eafc8; font-size: 11px;")
             self.lbl_status.setText(f"Phân tích hoàn tất: {total_scenes} cảnh, đã tìm thấy đầy đủ ảnh tương ứng.")
         else:
             self.lbl_summary_images.setText(f"⚠ Cần sửa {problem_count}/{total_scenes} ảnh")
-            self.lbl_summary_images.setStyleSheet("background-color: #450a0a; border: 1px solid #7f1d1d; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #f87171; font-weight: 600;")
+            self.lbl_summary_images.setStyleSheet("color: #f0a2a2; font-size: 11px;")
             self.lbl_status.setText(f"Cảnh báo: Có {problem_count} cảnh thiếu ảnh hoặc ảnh không đọc được.")
 
     def populate_table(self, timeline: List[Dict[str, Any]]):
@@ -1532,14 +1541,14 @@ class VideoTab(QWidget):
             # Scene ID
             id_item = QTableWidgetItem(item["id"])
             id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            id_item.setForeground(QColor("#facc15"))
+            id_item.setForeground(QColor("#dce7fa"))
             self.table.setItem(row, 1, id_item)
 
             # Phụ đề
             subs_str = ", ".join(map(str, item["subtitles"])) if item["subtitles"] else "(Tự động)"
             sub_item = QTableWidgetItem(subs_str)
             sub_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            sub_item.setForeground(QColor("#c084fc"))
+            sub_item.setForeground(QColor("#9ca6b7"))
             self.table.setItem(row, 2, sub_item)
 
             # File ảnh
@@ -1547,7 +1556,7 @@ class VideoTab(QWidget):
             status, valid = self._image_status(img_p)
             if valid:
                 img_item = QTableWidgetItem(f"✓ {img_p.name}")
-                img_item.setForeground(QColor("#34d399"))
+                img_item.setForeground(QColor("#cbd2de"))
             else:
                 img_item = QTableWidgetItem(f"✗ {img_p.name}" if img_p else "✗ CHƯA CÓ ẢNH")
                 img_item.setForeground(QColor("#f87171"))
@@ -1557,19 +1566,19 @@ class VideoTab(QWidget):
             # Bắt đầu
             start_item = QTableWidgetItem(video_creator.format_time(item["start"]))
             start_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            start_item.setForeground(QColor("#4ade80"))
+            start_item.setForeground(QColor("#aeb8c8"))
             self.table.setItem(row, 4, start_item)
 
             # Kết thúc
             end_item = QTableWidgetItem(video_creator.format_time(item["end"]))
             end_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            end_item.setForeground(QColor("#60a5fa"))
+            end_item.setForeground(QColor("#aeb8c8"))
             self.table.setItem(row, 5, end_item)
 
             # Thời lượng
             dur_item = QTableWidgetItem(f"{item['duration']:.2f}s")
             dur_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            dur_item.setForeground(QColor("#fbbf24"))
+            dur_item.setForeground(QColor("#aeb8c8"))
             self.table.setItem(row, 6, dur_item)
 
     def on_table_row_clicked(self, item: QTableWidgetItem):
@@ -1648,6 +1657,7 @@ class VideoTab(QWidget):
         self.btn_cancel.setVisible(True)
         self.panel_result.setVisible(False)
         self.progress_bar.setValue(5)
+        self.progress_bar.show()
         self.lbl_status.setText("Đang khởi tạo FFmpeg...")
 
         self.worker = VideoRenderWorker(
@@ -1674,6 +1684,7 @@ class VideoTab(QWidget):
         self.lbl_status.setText(msg)
 
     def on_render_finished(self, success: bool, res: dict):
+        self.progress_bar.hide()
         self.btn_start.setEnabled(True)
         self.btn_start.setVisible(True)
         self.btn_preview.setEnabled(True)
@@ -1683,7 +1694,7 @@ class VideoTab(QWidget):
 
         if success:
             self.progress_bar.setValue(100)
-            self.lbl_status.setText("🎉 Ghép video thành công rực rỡ!")
+            self.lbl_status.setText("Đã xuất video.")
             if self.project:
                 self.project.save_metadata()
             out_p = res.get("output_path")
@@ -1692,21 +1703,10 @@ class VideoTab(QWidget):
                 self.video_rendered.emit(str(out_p))
             dur = res.get("duration", 0.0)
             size_mb = res.get("size_mb", 0.0)
-            ratio = self.combo_ratio.currentText()
-
-            details = (
-                f"• Đường dẫn: <b>{out_p}</b><br>"
-                f"• Dung lượng: <b>{size_mb:.2f} MB</b> | Thời lượng: <b>{video_creator.format_time(dur)}</b> ({dur:.2f}s)<br>"
-                f"• Định dạng: <b>MP4 H.264 / AAC</b> | Tỉ lệ: <b>{ratio}</b>"
-            )
+            details = f"{Path(out_p).name if out_p else 'Video đã xuất'} · {size_mb:.1f} MB · {video_creator.format_time(dur)}"
             self.lbl_res_details.setText(details)
+            self.lbl_res_details.setToolTip(str(out_p or ""))
             self.panel_result.setVisible(True)
-
-            QMessageBox.information(
-                self,
-                "Thành Công",
-                f"🎉 Ghép video thành công!\n\nFile lưu tại:\n{out_p}\nDung lượng: {size_mb:.2f} MB\nThời lượng: {video_creator.format_time(dur)}"
-            )
         else:
             err = res.get("error", "Lỗi không xác định")
             self.lbl_status.setText(f"Ghép video thất bại: {err}")
