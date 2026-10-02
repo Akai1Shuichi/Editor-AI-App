@@ -4,14 +4,15 @@ import math
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl, QSize
-from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QColor, QIcon
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl, QSize, QSignalBlocker
+from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QColor, QIcon, QPainter, QPen
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QComboBox, QProgressBar, QFrame, QMessageBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
     QSplitter, QScrollArea, QApplication, QSizePolicy, QTreeWidget,
-    QTreeWidgetItem
+    QTreeWidgetItem, QSlider
 )
 
 from app import config
@@ -73,6 +74,21 @@ class PreviewImage(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumHeight(190)
         self.setWordWrap(True)
+        overlay_layout = QVBoxLayout(self)
+        overlay_layout.setContentsMargins(18, 8, 18, 14)
+        overlay_layout.addStretch()
+        self.subtitle_label = QLabel()
+        self.subtitle_label.setObjectName("video_preview_subtitle")
+        self.subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.subtitle_label.setWordWrap(True)
+        self.subtitle_label.hide()
+        overlay_layout.addWidget(self.subtitle_label)
+
+    def set_subtitle(self, text: str):
+        if self.subtitle_label.text() == text:
+            return
+        self.subtitle_label.setText(text)
+        self.subtitle_label.setVisible(bool(text))
 
     def set_image(self, path: Optional[Path]):
         self._source = QPixmap(str(path)) if path and path.is_file() else QPixmap()
@@ -93,6 +109,62 @@ class PreviewImage(QLabel):
         else:
             self.clear()
             self.setText(self._placeholder)
+
+
+class TimeRuler(QWidget):
+    """Paint a time ruler and let users seek at its exact timeline position."""
+
+    seek_requested = pyqtSignal(int)
+    PIXELS_PER_SECOND = 65
+    TRACK_OFFSET = 58
+
+    def __init__(self):
+        super().__init__()
+        self.duration = 0.0
+        self.position = 0.0
+        self.setFixedHeight(31)
+        self.setMinimumWidth(self.TRACK_OFFSET + 1)
+        self.setMouseTracking(True)
+
+    def set_duration(self, duration: float):
+        self.duration = max(0.0, duration)
+        self.setMinimumWidth(self.TRACK_OFFSET + round(self.duration * self.PIXELS_PER_SECOND))
+        self.update()
+
+    def set_position(self, position: float):
+        self.position = position
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor("#171b24"))
+        painter.setPen(QPen(QColor("#64748b")))
+        painter.drawText(4, 20, "THỜI GIAN")
+        if self.duration <= 0:
+            return
+        interval = next((step for step in (1, 2, 5, 10, 15, 30, 60, 120, 300, 600)
+                         if step * self.PIXELS_PER_SECOND >= 62), 600)
+        tick = 0
+        while tick <= self.duration:
+            x = self.TRACK_OFFSET + round(tick * self.PIXELS_PER_SECOND)
+            painter.drawLine(x, 19, x, 30)
+            painter.drawText(x + 3, 15, video_creator.format_time(tick).split(".")[0])
+            tick += interval
+        x = self.TRACK_OFFSET + round(self.position * self.PIXELS_PER_SECOND)
+        painter.setPen(QPen(QColor("#facc15"), 2))
+        painter.drawLine(x, 0, x, self.height())
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._seek_at(event.position().x())
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self._seek_at(event.position().x())
+
+    def _seek_at(self, x: float):
+        position = max(0.0, min(self.duration, (x - self.TRACK_OFFSET) / self.PIXELS_PER_SECOND))
+        self.seek_requested.emit(round(position * 1000))
 
 
 class VideoTab(QWidget):
@@ -117,8 +189,17 @@ class VideoTab(QWidget):
         self._loading_edit = False
         self._edit_dirty = False
         self._selected_scene = None
+        self._preview_subtitles = []
+        self._preview_audio_path = None
+        self._playhead_ms = 0
+        self.player = QMediaPlayer(self)
+        self.audio_output = QAudioOutput(self)
+        self.player.setAudioOutput(self.audio_output)
 
         self.init_ui()
+        self.player.positionChanged.connect(self._on_player_position_changed)
+        self.player.playbackStateChanged.connect(self._on_playback_state_changed)
+        self.player.errorOccurred.connect(self._on_preview_error)
         self.combo_ratio.currentIndexChanged.connect(self._on_export_settings_changed)
         self.combo_fps.currentIndexChanged.connect(self._on_export_settings_changed)
         self.auto_detect_defaults()
@@ -382,6 +463,18 @@ class VideoTab(QWidget):
         preview_layout.addWidget(preview_title)
         self.preview_image = PreviewImage()
         preview_layout.addWidget(self.preview_image, stretch=1)
+        transport = QHBoxLayout()
+        self.btn_play_pause = QPushButton("▶ Phát voice")
+        self.btn_play_pause.setObjectName("btn_subtle")
+        self.btn_play_pause.setEnabled(False)
+        self.btn_play_pause.clicked.connect(self.toggle_preview_playback)
+        transport.addWidget(self.btn_play_pause)
+        self.slider_playhead = QSlider(Qt.Orientation.Horizontal)
+        self.slider_playhead.setObjectName("video_playhead_slider")
+        self.slider_playhead.setRange(0, 0)
+        self.slider_playhead.valueChanged.connect(self.seek_preview)
+        transport.addWidget(self.slider_playhead, stretch=1)
+        preview_layout.addLayout(transport)
         self.lbl_preview_time = QLabel("00:00.000 / 00:00.000  ·  Chưa chọn cảnh")
         self.lbl_preview_time.setProperty("class", "section_label")
         preview_layout.addWidget(self.lbl_preview_time)
@@ -447,6 +540,8 @@ class VideoTab(QWidget):
         self.timeline_lanes = QVBoxLayout(self.timeline_content)
         self.timeline_lanes.setContentsMargins(4, 4, 4, 4)
         self.timeline_lanes.setSpacing(4)
+        self.time_ruler = TimeRuler()
+        self.time_ruler.seek_requested.connect(self.seek_preview)
         self.timeline_scroll.setWidget(self.timeline_content)
         right_layout.addWidget(self.timeline_scroll)
 
@@ -585,15 +680,18 @@ class VideoTab(QWidget):
     def _refresh_timeline_tracks(self):
         while self.timeline_lanes.count():
             entry = self.timeline_lanes.takeAt(0)
-            if entry.widget():
+            if entry.widget() and entry.widget() is not self.time_ruler:
                 entry.widget().deleteLater()
         self._scene_buttons = []
+        self.time_ruler.set_duration(self.total_audio_duration if self.current_timeline else 0)
+        self.timeline_lanes.addWidget(self.time_ruler)
+        self.timeline_content.setMinimumWidth(self.time_ruler.minimumWidth() + 8)
 
-        def lane(title):
+        def lane(title, *, spacing=3):
             widget = QWidget()
             row = QHBoxLayout(widget)
             row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(3)
+            row.setSpacing(spacing)
             label = QLabel(title)
             label.setFixedWidth(58)
             label.setProperty("class", "section_label")
@@ -601,16 +699,29 @@ class VideoTab(QWidget):
             self.timeline_lanes.addWidget(widget)
             return row
 
-        video_row = lane("ẢNH")
+        video_row = lane("ẢNH", spacing=0)
         if self.current_timeline:
+            video_track = QWidget()
+            video_track.setFixedSize(
+                max(1, round(self.total_audio_duration * self.time_ruler.PIXELS_PER_SECOND)), 48
+            )
+            video_row.addWidget(video_track)
             for index, clip in enumerate(self.current_timeline):
-                button = QPushButton(f"{clip['id']}  ·  {clip['duration']:.1f}s")
+                width = max(1, round(clip["duration"] * self.time_ruler.PIXELS_PER_SECOND))
+                button = QPushButton(clip["id"] if width >= 70 else "", video_track)
                 button.setObjectName("video_timeline_clip")
                 button.setToolTip(f"{video_creator.format_time(clip['start'])} – "
-                                  f"{video_creator.format_time(clip['end'])}")
-                button.setFixedWidth(max(84, min(420, round(clip["duration"] * 65))))
+                                  f"{video_creator.format_time(clip['end'])} · {clip['id']}")
+                button.setFixedWidth(width)
+                button.setFixedHeight(48)
+                button.move(round(clip["start"] * self.time_ruler.PIXELS_PER_SECOND), 0)
+                image = clip.get("image")
+                if image and image.is_file():
+                    thumbnail = QPixmap(str(image))
+                    if not thumbnail.isNull():
+                        button.setIcon(QIcon(thumbnail))
+                        button.setIconSize(QSize(max(1, min(52, width - 8)), 37))
                 button.clicked.connect(lambda _checked=False, row=index: self._select_scene(row))
-                video_row.addWidget(button)
                 self._scene_buttons.append(button)
         else:
             video_row.addWidget(QLabel("Chưa có timeline. Phân tích nguồn để bắt đầu."))
@@ -631,18 +742,16 @@ class VideoTab(QWidget):
             subtitle_row.addWidget(QLabel("Phụ đề sẽ hiện sau khi tạo timeline"))
         subtitle_row.addStretch()
 
-    def _select_scene(self, row: int):
+    def _select_scene(self, row: int, *, seek: bool = True):
         if not 0 <= row < len(self.current_timeline):
+            return
+        if seek:
+            self.seek_preview(round(self.current_timeline[row]["start"] * 1000))
             return
         self._selected_scene = row
         clip = self.current_timeline[row]
         self.table.selectRow(row)
         self.preview_image.set_image(clip.get("image"))
-        self.lbl_preview_time.setText(
-            f"{video_creator.format_time(clip['start'])} – "
-            f"{video_creator.format_time(clip['end'])}  /  "
-            f"{video_creator.format_time(self.total_audio_duration)}"
-        )
         self.lbl_clip_name.setText(f"Cảnh {row + 1} · {clip['id']}")
         image = clip.get("image")
         self.lbl_clip_media.setText(f"Ảnh: {image.name if image else 'Chưa có ảnh'}")
@@ -665,6 +774,102 @@ class VideoTab(QWidget):
             button.setProperty("selected", index == row)
             button.style().unpolish(button)
             button.style().polish(button)
+
+    def _configure_preview_audio(self):
+        if self.edit_document and self.project:
+            reference = self.edit_document["tracks"]["audio"][0]["media"]
+            path = edit_document.media_path(self.project.path, reference)
+        else:
+            value = self.txt_audio_file.text().strip().strip('"')
+            path = Path(value) if value else None
+        path = path.resolve() if path and path.is_file() else None
+        changed = path != self._preview_audio_path
+        if changed:
+            self.player.stop()
+            self._preview_audio_path = path
+            self.player.setSource(QUrl.fromLocalFile(str(path)) if path else QUrl())
+        self.btn_play_pause.setEnabled(path is not None and bool(self.current_timeline))
+        self.btn_play_pause.setToolTip(str(path) if path else "Không tìm thấy file voice của bản dựng")
+        return changed
+
+    def seek_preview(self, position_ms: int):
+        limit = round(self.total_audio_duration * 1000)
+        position_ms = max(0, min(int(position_ms), limit))
+        self._update_playhead(position_ms)
+        if self._preview_audio_path:
+            self.player.setPosition(position_ms)
+
+    def _on_player_position_changed(self, position_ms: int):
+        self._update_playhead(position_ms)
+
+    def _update_playhead(self, position_ms: int):
+        limit = round(self.total_audio_duration * 1000)
+        self._playhead_ms = max(0, min(position_ms, limit))
+        with QSignalBlocker(self.slider_playhead):
+            self.slider_playhead.setValue(self._playhead_ms)
+        position = self._playhead_ms / 1000
+        self.time_ruler.set_position(position)
+        if self.current_timeline:
+            scrollbar = self.timeline_scroll.horizontalScrollBar()
+            marker_x = 4 + self.time_ruler.TRACK_OFFSET + round(
+                position * self.time_ruler.PIXELS_PER_SECOND
+            )
+            viewport_width = self.timeline_scroll.viewport().width()
+            if marker_x < scrollbar.value() or marker_x > scrollbar.value() + viewport_width - 20:
+                scrollbar.setValue(marker_x - viewport_width // 2)
+        self.lbl_preview_time.setText(
+            f"{video_creator.format_time(position)} / "
+            f"{video_creator.format_time(self.total_audio_duration)}"
+        )
+        row = next((index for index, clip in enumerate(self.current_timeline)
+                    if clip["start"] <= position < clip["end"]), None)
+        if row is None and self.current_timeline and self._playhead_ms == limit:
+            row = len(self.current_timeline) - 1
+        if row is not None and row != self._selected_scene:
+            self._select_scene(row, seek=False)
+        elif row is None:
+            self._selected_scene = None
+            self.table.clearSelection()
+            self.preview_image.set_image(None)
+            for button in self._scene_buttons:
+                button.setProperty("selected", False)
+                button.style().unpolish(button)
+                button.style().polish(button)
+        subtitle = "\n".join(
+            entry["text"] for entry in self._preview_subtitles
+            if entry["start"] <= position < entry["end"] and entry["text"]
+        )
+        self.preview_image.set_subtitle(subtitle)
+
+    def toggle_preview_playback(self):
+        if not self._preview_audio_path:
+            return
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+        else:
+            if self._playhead_ms >= round(self.total_audio_duration * 1000):
+                self.seek_preview(0)
+            self.player.play()
+
+    def _on_playback_state_changed(self, state):
+        self.btn_play_pause.setText(
+            "⏸ Tạm dừng" if state == QMediaPlayer.PlaybackState.PlayingState else "▶ Phát voice"
+        )
+
+    def _on_preview_error(self, error, message):
+        if error != QMediaPlayer.Error.NoError:
+            self.lbl_status.setText(f"Không thể phát voice: {message}")
+            self.btn_play_pause.setText("▶ Phát voice")
+
+    def hideEvent(self, event):
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+        super().hideEvent(event)
+
+    def closeEvent(self, event):
+        self.player.stop()
+        self.player.setSource(QUrl())
+        super().closeEvent(event)
 
     # ================= TỰ ĐỘNG PHÁT HIỆN & BROWSE =================
     def auto_detect_defaults(self):
@@ -763,6 +968,11 @@ class VideoTab(QWidget):
 
     def set_project(self, project):
         """Đồng bộ hóa toàn bộ tài nguyên đầu vào theo Dự Án được chọn."""
+        self.player.stop()
+        self.player.setSource(QUrl())
+        self._preview_audio_path = None
+        self._preview_subtitles = []
+        self._playhead_ms = 0
         self.edit_document = None
         self._edit_dirty = False
         self._selected_scene = None
@@ -775,6 +985,11 @@ class VideoTab(QWidget):
         self.lbl_summary_images.setText("Chưa phân tích")
         self.panel_result.setVisible(False)
         self.preview_image.set_image(None)
+        self.preview_image.set_subtitle("")
+        self.slider_playhead.setRange(0, 0)
+        self.btn_play_pause.setEnabled(False)
+        self.time_ruler.set_duration(0)
+        self.time_ruler.set_position(0)
         self.lbl_preview_time.setText("00:00.000 / 00:00.000  ·  Chưa chọn cảnh")
         self.lbl_clip_name.setText("Chưa chọn cảnh")
         self.lbl_clip_media.setText("Ảnh: —")
@@ -873,8 +1088,16 @@ class VideoTab(QWidget):
             self.lbl_status.setText("Đã đổi nguồn. Bản dựng hiện tại được giữ; chọn 'Tạo lại timeline từ nguồn' để áp dụng.")
         else:
             self.current_timeline = []
+            self.total_audio_duration = 0.0
             self.table.setRowCount(0)
+            self._preview_subtitles = []
+            self.player.stop()
+            self.btn_play_pause.setEnabled(False)
+            self.preview_image.set_subtitle("")
+            self.slider_playhead.setRange(0, 0)
+            self._playhead_ms = 0
             self._refresh_timeline_tracks()
+            self._update_playhead(0)
 
     def set_audio_and_srt(self, audio_path: str, srt_path: str):
         """Được gọi từ MainWindow hoặc TTSTab khi vừa tạo xong voice & srt."""
@@ -941,6 +1164,7 @@ class VideoTab(QWidget):
             self.combo_fps.setCurrentIndex(self.combo_fps.findData(document["settings"]["fps"]))
             self.edit_document = document
             self.current_timeline = timeline
+            self._preview_subtitles = document["tracks"]["subtitles"]
             self.total_audio_duration = document["duration"]
             self._edit_dirty = False
         finally:
@@ -1093,6 +1317,7 @@ class VideoTab(QWidget):
 
         if not self.project:
             self.current_timeline = timeline
+            self._preview_subtitles = list(subtitles.values())
             self.total_audio_duration = total_duration
             self._show_timeline(timeline)
         else:
@@ -1103,8 +1328,10 @@ class VideoTab(QWidget):
         self.populate_table(timeline)
         self._refresh_asset_library()
         self._refresh_timeline_tracks()
-        if timeline:
-            self._select_scene(min(self._selected_scene or 0, len(timeline) - 1))
+        audio_changed = self._configure_preview_audio()
+        self.slider_playhead.setRange(0, max(0, round(self.total_audio_duration * 1000)))
+        self._selected_scene = None
+        self._update_playhead(0 if audio_changed else self._playhead_ms)
 
         # Cập nhật thông số tóm tắt
         missing_count = sum(1 for item in timeline if item["image"] is None or not item["image"].is_file())

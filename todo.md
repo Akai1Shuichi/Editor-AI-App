@@ -26,6 +26,10 @@ Cho phép người dùng lấy ảnh cảnh, voice, phụ đề SRT và kịch b
 
    **Model gợi ý: GPT-6 Sol — High.** Cần xử lý phát/dừng, tua và đồng bộ thời gian. Chuyển sang GPT-6 Astra — High nếu gặp lệch tiếng/hình, giật preview hoặc lỗi luồng khó xác định.
 
+   **Trạng thái: Đã hoàn thành bước 3.** Preview có nút phát/tạm dừng voice, thanh tua và thước thời gian có thể bấm/kéo. Vị trí phát của voice điều khiển ảnh cảnh và phụ đề theo mốc thời gian của bản dựng; chọn clip sẽ tua tới đầu cảnh. Dải clip hiển thị ảnh thu nhỏ và tự cuộn theo playhead. Khi thiếu voice, vẫn có thể tua để xem ảnh/phụ đề; chuyển dự án hoặc đóng tab sẽ dừng phát.
+
+   Đã kiểm tra bằng 12 test của bản dựng, gồm tua, đổi cảnh/phụ đề, thao tác trên thước thời gian và trường hợp thiếu voice. Qt Multimedia phát thử file WAV hợp lệ và vị trí phát tăng theo thời gian. Bộ test toàn dự án hiện còn lỗi ở các phần không thuộc Bước 3; xem ghi chú khi bàn giao.
+
 4. **Thêm chỉnh sửa cơ bản:** Đổi thứ tự và thay ảnh cảnh, kéo dài/ngắn thời lượng, sửa phụ đề; hỗ trợ undo/redo, lưu và mở lại bản dựng.
 
    **Model gợi ý: GPT-6 Sol — High.** Nên chia thành từng nhóm thao tác để kiểm soát trạng thái. Dùng GPT-6 Astra — High khi cần rà soát tương tác giữa kéo clip, undo/redo và lưu dữ liệu.

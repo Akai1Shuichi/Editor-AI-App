@@ -613,6 +613,15 @@ QLabel#video_preview_canvas {
     font-size: 12px;
 }
 
+QLabel#video_preview_subtitle {
+    background-color: rgba(5, 8, 15, 190);
+    border-radius: 5px;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 6px 10px;
+}
+
 QLabel#video_clip_name {
     color: #f8fafc;
     font-size: 14px;
@@ -642,8 +651,7 @@ QPushButton#video_timeline_clip {
     border: 1px solid #3b82b8;
     border-radius: 5px;
     color: #e0f2fe;
-    min-height: 25px;
-    padding: 2px 5px;
+    padding: 2px 3px;
     text-align: left;
 }
 

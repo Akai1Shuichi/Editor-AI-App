@@ -9,6 +9,9 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtGui import QImage, QColor
+from PyQt6.QtTest import QTest
 
 from app.core import edit_document
 from app.core.project_manager import Project
@@ -216,6 +219,57 @@ class EditDocumentUiTests(unittest.TestCase):
         self.assertIsNone(self.video.edit_document)
         self.assertEqual(self.video.current_timeline, [])
         self.assertEqual(self.video.total_audio_duration, 0)
+
+    def test_playhead_tracks_scene_and_subtitle_without_changing_draft(self):
+        for name, color in (("SC01.png", "red"), ("SC02.png", "blue")):
+            image = QImage(80, 45, QImage.Format.Format_RGB32)
+            image.fill(QColor(color))
+            self.assertTrue(image.save(str(self.project.clean_images_dir / name)))
+        self.create_draft()
+        saved = self.project.edit_path.read_bytes()
+
+        self.video.seek_preview(500)
+        self.assertEqual(self.video._selected_scene, 0)
+        self.assertEqual(self.video.preview_image.subtitle_label.text(), "Xin chào")
+        self.assertFalse(self.video._scene_buttons[0].icon().isNull())
+        self.assertEqual(self.video.time_ruler.position, 0.5)
+
+        self.video.slider_playhead.setValue(1500)
+        self.assertEqual(self.video._playhead_ms, 1500)
+        self.assertEqual(self.video.preview_image.subtitle_label.text(), "Xin chào")
+
+        self.video._on_player_position_changed(2500)
+        self.assertEqual(self.video._selected_scene, 1)
+        self.assertEqual(self.video.slider_playhead.value(), 2500)
+        self.assertEqual(self.video.preview_image.subtitle_label.text(), "Tạm biệt")
+        self.assertEqual(self.video.table.currentRow(), 1)
+
+        self.assertTrue(self.video.analyze_timeline())
+        self.assertEqual(self.video._playhead_ms, 2500)
+
+        self.video.seek_preview(4000)
+        self.assertEqual(self.video._selected_scene, 1)
+        self.assertEqual(self.video.preview_image.subtitle_label.text(), "")
+        self.assertEqual(self.project.edit_path.read_bytes(), saved)
+
+    def test_ruler_and_scene_click_seek_playhead(self):
+        self.create_draft()
+        self.video.time_ruler.show()
+        QTest.mouseClick(self.video.time_ruler, Qt.MouseButton.LeftButton,
+                         pos=QPoint(self.video.time_ruler.TRACK_OFFSET + 163, 15))
+        self.assertAlmostEqual(self.video._playhead_ms, 2508, delta=16)
+        self.video._scene_buttons[0].click()
+        self.assertEqual(self.video._playhead_ms, 0)
+        self.assertEqual(self.video._selected_scene, 0)
+
+    def test_missing_voice_keeps_scrubbing_available(self):
+        self.create_draft()
+        (self.project.voice_dir / "voice.mp3").unlink()
+        self.video.set_project(self.project)
+        self.assertFalse(self.video.btn_play_pause.isEnabled())
+        self.video.slider_playhead.setValue(2500)
+        self.assertEqual(self.video._selected_scene, 1)
+        self.assertEqual(self.video.preview_image.subtitle_label.text(), "Tạm biệt")
 
 
 if __name__ == "__main__":
