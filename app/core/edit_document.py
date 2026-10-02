@@ -44,6 +44,7 @@ def create_document(
     aspect_ratio: str,
     fps: int,
     total_duration: float,
+    subtitles_enabled: bool = False,
 ) -> Dict[str, Any]:
     """Import the existing automatic timeline once as an editable draft."""
     video_clips = []
@@ -64,7 +65,8 @@ def create_document(
             "audio": media_reference(project_dir, audio_path),
             "srt": media_reference(project_dir, srt_path),
         },
-        "settings": {"aspect_ratio": aspect_ratio, "fps": int(fps)},
+        "settings": {"aspect_ratio": aspect_ratio, "fps": int(fps),
+                     "subtitles_enabled": subtitles_enabled},
         "duration": float(total_duration),
         "tracks": {
             "video": video_clips,
@@ -97,6 +99,8 @@ def validate_document(document: Dict[str, Any]) -> None:
         raise ValueError("Tỉ lệ khung hình của bản dựng không được hỗ trợ.")
     if type(settings.get("fps")) is not int or settings["fps"] not in (24, 30, 60):
         raise ValueError("FPS của bản dựng không được hỗ trợ.")
+    if type(settings.get("subtitles_enabled", False)) is not bool:
+        raise ValueError("Cài đặt bật/tắt phụ đề không hợp lệ.")
 
     def valid_time(value):
         return type(value) in (int, float) and math.isfinite(value) and value >= 0
@@ -192,4 +196,39 @@ def document_timeline(project_dir: Path, document: Dict[str, Any]) -> List[Dict[
             "motion": deepcopy(clip.get("motion") or {"type": "none", "strength": "subtle"}),
             "start": start, "end": end, "duration": round(end - start, 3),
         })
+    return result
+
+
+def render_timeline(project_dir: Path, document: Dict[str, Any], fps: int) -> List[Dict[str, Any]]:
+    """Resolve the scene visible at each output frame, using preview's first-match rule.
+
+    Gaps become black frames. Overlapping clips keep the earlier clip in list
+    order, exactly as the playhead preview does. Boundaries are aligned to the
+    first frame whose timestamp reaches the saved boundary.
+    """
+    clips = document_timeline(project_dir, document)
+    duration = float(document["duration"])
+    frame_count = math.ceil(duration * fps)
+    boundaries = {0, frame_count}
+    for clip in clips:
+        boundaries.add(min(frame_count, math.ceil(clip["start"] * fps)))
+        boundaries.add(min(frame_count, math.ceil(clip["end"] * fps)))
+    result = []
+    points = sorted(boundaries)
+    for first, last in zip(points, points[1:]):
+        if first == last:
+            continue
+        position = first / fps
+        active = next((clip for clip in clips
+                       if clip["start"] <= position < clip["end"]), None)
+        segment = deepcopy(active) if active else {
+            "id": "gap", "image": None,
+            "motion": {"type": "none", "strength": "subtle"},
+        }
+        segment["motion_start"] = active["start"] if active else position
+        segment["motion_end"] = active["end"] if active else last / fps
+        segment["start"] = first / fps
+        segment["end"] = last / fps
+        segment["duration"] = (last - first) / fps
+        result.append(segment)
     return result

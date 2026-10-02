@@ -44,6 +44,12 @@ Cho phép người dùng lấy ảnh cảnh, voice, phụ đề SRT và kịch b
 
    **Model gợi ý: GPT-6 Astra — Medium.** Đây là phần dễ phát sinh sai thời lượng, lệch khung hình, lỗi filter FFmpeg hoặc khác biệt giữa preview và video xuất; tăng lên High nếu các lỗi này khó xác định hoặc chưa giải quyết được sau kiểm tra.
 
+   **Trạng thái: Đã hoàn thành bước 5.** Khi xuất, Bước 4 lưu các thay đổi đang chờ rồi đọc lại `edit.json`; FFmpeg dùng thời lượng, FPS, tỉ lệ, voice, ảnh và phụ đề của bản dựng đó. Các cảnh chồng lấn theo thứ tự ưu tiên của preview; khoảng trống hoặc ảnh thiếu/không đọc được hiện bằng khung đen. Ảnh đầu vào được chuẩn hóa kích thước trước khi ghép để tránh mất khung hình khi các nguồn khác kích thước. Phụ đề được đốt vào MP4 theo mốc và nội dung của track phụ đề, kể cả khi nhiều đoạn cùng hiện. Luồng xuất cũ vẫn hoạt động khi không có bản dựng đã lưu.
+
+   Đã chạy 34 kiểm tra liên quan đến bản dựng, chuyển động cảnh và bàn giao kịch bản; thêm kiểm tra FFmpeg thật cho thứ tự cảnh, khoảng trống, phụ đề, số khung hình và xuất theo luồng cũ. Kiểm tra luồng hoàn chỉnh với dự án thực vẫn thuộc bước 6.
+
+   Bổ sung công tắc **Bật phụ đề trên video** trong cấu hình xuất, mặc định tắt cho dự án mới và bản dựng cũ chưa có cài đặt. Lựa chọn được lưu trong `edit.json`, áp dụng cho preview và MP4, không xóa nội dung/mốc phụ đề. Đã kiểm tra bật/tắt, lưu/mở lại, tự động lưu và xuất FFmpeg thật ở cả hai trạng thái.
+
 6. **Kiểm tra luồng hoàn chỉnh:** Tạo timeline từ Bước 1–3 → chỉnh sửa → lưu → đóng/mở dự án → xem lại → xuất MP4; kiểm tra cả trường hợp thiếu hoặc đổi đường dẫn asset.
 
    **Model gợi ý: GPT-6 Sol — Medium.** Phù hợp kiểm tra xuyên suốt và xử lý lỗi liên quan nhiều phần. Dùng GPT-6 Luna — Medium cho từng kiểm tra nhỏ có tiêu chí rõ; tăng lên High nếu còn lỗi mất dữ liệu hoặc sai kết quả xuất khó tái hiện.

@@ -1,6 +1,5 @@
 from pathlib import Path
 from copy import deepcopy
-import math
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -12,7 +11,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QComboBox, QProgressBar, QFrame, QMessageBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
     QSplitter, QScrollArea, QApplication, QSizePolicy, QTreeWidget,
-    QTreeWidgetItem, QSlider
+    QTreeWidgetItem, QSlider, QCheckBox
 )
 
 from app import config
@@ -32,7 +31,8 @@ class VideoRenderWorker(QThread):
         output_path: Path,
         total_audio_duration: float,
         aspect_ratio: str = "16:9",
-        fps: int = 30
+        fps: int = 30,
+        subtitles: Optional[List[Dict[str, Any]]] = None,
     ):
         super().__init__()
         self.timeline = timeline
@@ -41,6 +41,7 @@ class VideoRenderWorker(QThread):
         self.total_audio_duration = total_audio_duration
         self.aspect_ratio = aspect_ratio
         self.fps = fps
+        self.subtitles = subtitles
         self._is_cancelled = False
 
     def cancel(self):
@@ -50,7 +51,7 @@ class VideoRenderWorker(QThread):
         def on_prog(pct: int, msg: str):
             self.progress_updated.emit(pct, msg)
 
-        res = video_creator.render_video(
+        render_options = dict(
             timeline=self.timeline,
             audio_path=self.audio_path,
             output_path=self.output_path,
@@ -60,15 +61,23 @@ class VideoRenderWorker(QThread):
             progress_callback=on_prog,
             is_cancelled=lambda: self._is_cancelled
         )
+        if self.subtitles is not None:
+            render_options["subtitles"] = self.subtitles
+        try:
+            res = video_creator.render_video(**render_options)
+        except Exception as exc:
+            res = {"success": False, "error": str(exc)}
         self.render_finished.emit(res.get("success", False), res)
 
 
 class PreviewImage(QLabel):
-    """Scale the selected still image whenever the preview area changes size."""
+    """Show the same centered cover crop and aspect ratio as the export."""
 
     def __init__(self):
         super().__init__("Chọn một cảnh trên timeline để xem ảnh")
         self._source = QPixmap()
+        self._gap = False
+        self._aspect_ratio = 16 / 9
         self._placeholder = "Chọn một cảnh trên timeline để xem ảnh"
         self.setObjectName("video_preview_canvas")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -80,9 +89,14 @@ class PreviewImage(QLabel):
         self.subtitle_label = QLabel()
         self.subtitle_label.setObjectName("video_preview_subtitle")
         self.subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.subtitle_label.setTextFormat(Qt.TextFormat.PlainText)
         self.subtitle_label.setWordWrap(True)
         self.subtitle_label.hide()
         overlay_layout.addWidget(self.subtitle_label)
+
+    def set_aspect_ratio(self, value: str):
+        self._aspect_ratio = {"16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1}.get(value, 16 / 9)
+        self._update_pixmap()
 
     def set_subtitle(self, text: str):
         if self.subtitle_label.text() == text:
@@ -91,9 +105,15 @@ class PreviewImage(QLabel):
         self.subtitle_label.setVisible(bool(text))
 
     def set_image(self, path: Optional[Path]):
+        self._gap = False
         self._source = QPixmap(str(path)) if path and path.is_file() else QPixmap()
         self._placeholder = ("Không tìm thấy hoặc không đọc được ảnh cảnh" if path else
                              "Chọn một cảnh trên timeline để xem ảnh")
+        self._update_pixmap()
+
+    def show_gap(self):
+        self._gap = True
+        self._source = QPixmap()
         self._update_pixmap()
 
     def resizeEvent(self, event):
@@ -101,11 +121,36 @@ class PreviewImage(QLabel):
         self._update_pixmap()
 
     def _update_pixmap(self):
-        if not self._source.isNull():
-            self.setPixmap(self._source.scaled(
-                self.size(), Qt.AspectRatioMode.KeepAspectRatio,
+        if self._gap and self.width() > 0 and self.height() > 0:
+            canvas = QPixmap(self.size())
+            canvas.fill(QColor("#000000"))
+            self.setPixmap(canvas)
+        elif not self._source.isNull() and self.width() > 0 and self.height() > 0:
+            frame_width = min(self.width(), round(self.height() * self._aspect_ratio))
+            frame_height = min(self.height(), round(self.width() / self._aspect_ratio))
+            frame_width = max(1, frame_width)
+            frame_height = max(1, frame_height)
+            scaled = self._source.scaled(
+                frame_width, frame_height, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation,
-            ))
+            )
+            crop = scaled.copy((scaled.width() - frame_width) // 2,
+                               (scaled.height() - frame_height) // 2,
+                               frame_width, frame_height)
+            canvas = QPixmap(self.size())
+            canvas.fill(QColor("#000000"))
+            painter = QPainter(canvas)
+            painter.drawPixmap((self.width() - frame_width) // 2,
+                               (self.height() - frame_height) // 2, crop)
+            painter.end()
+            self.setPixmap(canvas)
+            x_margin = (self.width() - frame_width) // 2
+            bottom_margin = (self.height() - frame_height) // 2
+            self.layout().setContentsMargins(x_margin + 12, 8, x_margin + 12,
+                                             bottom_margin + 12)
+            self.subtitle_label.setStyleSheet(
+                f"font-size: {max(9, round(frame_height * 0.039))}px;"
+            )
         else:
             self.clear()
             self.setText(self._placeholder)
@@ -202,6 +247,7 @@ class VideoTab(QWidget):
         self.player.errorOccurred.connect(self._on_preview_error)
         self.combo_ratio.currentIndexChanged.connect(self._on_export_settings_changed)
         self.combo_fps.currentIndexChanged.connect(self._on_export_settings_changed)
+        self.chk_subtitles.toggled.connect(self._on_export_settings_changed)
         self.auto_detect_defaults()
 
     def init_ui(self):
@@ -366,6 +412,11 @@ class VideoTab(QWidget):
         self.combo_fps.addItem("60 FPS (Mượt mà nhất)", 60)
         self.combo_fps.addItem("24 FPS (Chuẩn Điện ảnh)", 24)
         cfg_layout.addWidget(self.combo_fps)
+
+        self.chk_subtitles = QCheckBox("Bật phụ đề trên video")
+        self.chk_subtitles.setChecked(False)
+        self.chk_subtitles.setToolTip("Hiển thị phụ đề trong preview và đưa phụ đề lên video xuất.")
+        cfg_layout.addWidget(self.chk_subtitles)
 
         # Đường dẫn xuất
         lbl_out = QLabel("Tên & Đường dẫn file video xuất ra:")
@@ -930,7 +981,7 @@ class VideoTab(QWidget):
         elif row is None:
             self._selected_scene = None
             self.table.clearSelection()
-            self.preview_image.set_image(None)
+            self.preview_image.show_gap()
             self.lbl_clip_name.setText("Chưa có cảnh tại mốc này")
             self.lbl_clip_media.setText("Ảnh: —")
             self.lbl_clip_image_status.setText("Trạng thái ảnh: —")
@@ -947,7 +998,7 @@ class VideoTab(QWidget):
             entry["text"] for entry in self._preview_subtitles
             if entry["start"] <= position < entry["end"] and entry["text"]
         )
-        self.preview_image.set_subtitle(subtitle)
+        self.preview_image.set_subtitle(subtitle if self.chk_subtitles.isChecked() else "")
 
     def toggle_preview_playback(self):
         if not self._preview_audio_path:
@@ -1083,6 +1134,8 @@ class VideoTab(QWidget):
         self._playhead_ms = 0
         self.edit_document = None
         self._edit_dirty = False
+        with QSignalBlocker(self.chk_subtitles):
+            self.chk_subtitles.setChecked(False)
         self._selected_scene = None
         self.current_timeline = []
         self.total_audio_duration = 0.0
@@ -1242,11 +1295,15 @@ class VideoTab(QWidget):
         self.auto_save = enabled
 
     def _on_export_settings_changed(self):
+        self.preview_image.set_aspect_ratio(self.combo_ratio.currentData() or "16:9")
+        if not self._loading_edit and self.current_timeline:
+            self._update_playhead(self._playhead_ms)
         if self._loading_edit or self.edit_document is None:
             return
         self.edit_document["settings"].update({
             "aspect_ratio": self.combo_ratio.currentData(),
             "fps": self.combo_fps.currentData(),
+            "subtitles_enabled": self.chk_subtitles.isChecked(),
         })
         self._edit_dirty = True
         if self.auto_save:
@@ -1274,6 +1331,7 @@ class VideoTab(QWidget):
             self.txt_srt_file.setText(str(edit_document.media_path(self.project.path, sources["srt"])))
             self.combo_ratio.setCurrentIndex(self.combo_ratio.findData(document["settings"]["aspect_ratio"]))
             self.combo_fps.setCurrentIndex(self.combo_fps.findData(document["settings"]["fps"]))
+            self.chk_subtitles.setChecked(document["settings"].get("subtitles_enabled", False))
             self.edit_document = document
             self.current_timeline = timeline
             self._preview_subtitles = document["tracks"]["subtitles"]
@@ -1419,6 +1477,7 @@ class VideoTab(QWidget):
                 document = edit_document.create_document(
                     self.project.path, timeline, subtitles, image_dir, audio_path, srt_path,
                     self.combo_ratio.currentData(), self.combo_fps.currentData(), total_duration,
+                    subtitles_enabled=self.chk_subtitles.isChecked(),
                 )
                 self.project.save_edit_document(document, overwrite=replace_existing, backup=replace_existing)
                 self._apply_edit_document(document)
@@ -1531,26 +1590,34 @@ class VideoTab(QWidget):
             if not self.analyze_timeline():
                 return
 
+        saved_document = None
         if self.edit_document is not None:
-            self.current_timeline = edit_document.document_timeline(self.project.path, self.edit_document)
-            # The existing concat renderer only supports a continuous image sequence.
-            end = 0.0
-            for clip in self.current_timeline:
-                if not math.isclose(clip["start"], end, abs_tol=0.001):
-                    QMessageBox.warning(self, "Chưa thể xuất bản dựng", "Bộ xuất hiện tại cần các cảnh nối tiếp, không có khoảng trống hoặc chồng lấn.")
-                    return
-                end = clip["end"]
+            if not self.save_current_state():
+                return
+            try:
+                saved_document = self.project.load_edit_document()
+            except (OSError, ValueError) as exc:
+                QMessageBox.warning(self, "Không thể đọc bản dựng", str(exc))
+                return
 
-        render_timeline = deepcopy(self.current_timeline)
+        aspect_ratio = self.combo_ratio.currentData() or "16:9"
+        fps = int(self.combo_fps.currentData() or 30)
+        subtitles_enabled = self.chk_subtitles.isChecked()
+        if saved_document is not None:
+            aspect_ratio = saved_document["settings"]["aspect_ratio"]
+            fps = saved_document["settings"]["fps"]
+            subtitles_enabled = saved_document["settings"].get("subtitles_enabled", False)
+        render_timeline = (edit_document.render_timeline(self.project.path, saved_document, fps)
+                           if saved_document is not None else deepcopy(self.current_timeline))
         for clip in render_timeline:
             if clip["image"] is not None and not clip["image"].is_file():
                 clip["image"] = None
-        missing = [it for it in render_timeline if it["image"] is None]
+        missing = [it for it in render_timeline if it["image"] is None and it["id"] != "gap"]
         if missing:
             reply = QMessageBox.question(
                 self,
                 "Thiếu ảnh cho cảnh",
-                f"Có {len(missing)} cảnh không tìm thấy ảnh.\nBạn có muốn tiếp tục ghép video với các ảnh sẵn có không?",
+                f"Có {len(missing)} cảnh không tìm thấy ảnh.\nBạn có muốn tiếp tục xuất, dùng khung đen cho các cảnh này không?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
@@ -1564,14 +1631,15 @@ class VideoTab(QWidget):
         output_path = Path(out_str)
 
         audio_path = Path(self.txt_audio_file.text().strip().strip('"'))
-        if self.edit_document is not None:
-            audio_path = edit_document.media_path(self.project.path, self.edit_document["tracks"]["audio"][0]["media"])
+        if saved_document is not None:
+            audio_path = edit_document.media_path(self.project.path, saved_document["tracks"]["audio"][0]["media"])
         if not audio_path.is_file():
             QMessageBox.warning(self, "Thiếu voice", f"Không tìm thấy file voice của bản dựng: {audio_path}")
             return
-        aspect_ratio = self.combo_ratio.currentData() or "16:9"
-        fps = int(self.combo_fps.currentData() or 30)
-
+        if saved_document is not None:
+            render_subtitles = deepcopy(saved_document["tracks"]["subtitles"]) if subtitles_enabled else []
+        else:
+            render_subtitles = deepcopy(self._preview_subtitles) if subtitles_enabled else None
         self.btn_start.setEnabled(False)
         self.btn_start.setVisible(False)
         self.btn_preview.setEnabled(False)
@@ -1586,9 +1654,10 @@ class VideoTab(QWidget):
             timeline=render_timeline,
             audio_path=audio_path,
             output_path=output_path,
-            total_audio_duration=self.total_audio_duration,
+            total_audio_duration=(saved_document["duration"] if saved_document else self.total_audio_duration),
             aspect_ratio=aspect_ratio,
-            fps=fps
+            fps=fps,
+            subtitles=render_subtitles,
         )
         self.worker.progress_updated.connect(self.on_render_progress)
         self.worker.render_finished.connect(self.on_render_finished)

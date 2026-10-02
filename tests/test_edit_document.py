@@ -15,7 +15,7 @@ from PyQt6.QtTest import QTest
 
 from app.core import edit_document
 from app.core.project_manager import Project
-from app.ui.video_tab import VideoTab
+from app.ui.video_tab import VideoTab, PreviewImage
 
 
 def make_project(root):
@@ -106,6 +106,9 @@ class EditDocumentStorageTests(unittest.TestCase):
         bad["tracks"]["video"][1]["id"] = bad["tracks"]["video"][0]["id"]
         cases.append(bad)
         bad = deepcopy(self.document)
+        bad["settings"]["subtitles_enabled"] = "false"
+        cases.append(bad)
+        bad = deepcopy(self.document)
         bad["tracks"]["video"][0]["end"] = -1
         cases.append(bad)
         for document in cases:
@@ -143,12 +146,72 @@ class EditDocumentUiTests(unittest.TestCase):
         self.assertTrue(self.video.analyze_timeline())
         self.assertTrue(self.project.edit_path.exists())
 
+    def test_subtitle_toggle_defaults_off_and_survives_save_and_reopen(self):
+        self.create_draft()
+        original_tracks = deepcopy(self.video.edit_document["tracks"])
+        self.video.seek_preview(500)
+        self.assertFalse(self.video.chk_subtitles.isChecked())
+        self.assertFalse(self.project.load_edit_document()["settings"]["subtitles_enabled"])
+        self.assertEqual(self.video.preview_image.subtitle_label.text(), "")
+        with patch("app.ui.video_tab.VideoRenderWorker") as worker:
+            self.video.start_render()
+            self.assertEqual(worker.call_args.kwargs["subtitles"], [])
+            self.video.worker = None
+
+        self.video.chk_subtitles.setChecked(True)
+        self.assertEqual(self.video.preview_image.subtitle_label.text(), "Xin chào")
+        self.assertFalse(self.project.load_edit_document()["settings"]["subtitles_enabled"])
+        self.assertTrue(self.video.save_current_state())
+        self.video.set_project(self.project)
+        self.assertTrue(self.video.chk_subtitles.isChecked())
+        self.video.set_auto_save(True)
+        self.video.chk_subtitles.setChecked(False)
+        self.assertEqual(self.video.preview_image.subtitle_label.text(), "")
+        self.assertFalse(self.project.load_edit_document()["settings"]["subtitles_enabled"])
+        self.assertEqual(self.project.load_edit_document()["tracks"], original_tracks)
+
+        legacy = self.project.load_edit_document()
+        del legacy["settings"]["subtitles_enabled"]
+        self.video.set_auto_save(False)
+        self.video.chk_subtitles.setChecked(True)
+        self.project.save_edit_document(legacy, overwrite=True)
+        self.video.set_project(self.project)
+        self.assertFalse(self.video.chk_subtitles.isChecked())
+
+    def test_preview_uses_export_aspect_and_centered_cover_crop(self):
+        image_path = self.root / "wide.png"
+        image = QImage(120, 60, QImage.Format.Format_RGB32)
+        image.fill(QColor("green"))
+        self.assertTrue(image.save(str(image_path)))
+        preview = PreviewImage()
+        preview.resize(240, 120)
+        preview.set_aspect_ratio("9:16")
+        preview.set_image(image_path)
+        result = preview.pixmap().toImage()
+        self.assertEqual(result.pixelColor(10, 60), QColor("black"))
+        self.assertEqual(result.pixelColor(120, 60), QColor("green"))
+
+    def test_preview_gap_is_black_while_subtitle_stays_visible(self):
+        self.create_draft()
+        document = self.project.load_edit_document()
+        document["settings"]["subtitles_enabled"] = True
+        document["tracks"]["video"][0]["end"] = 1
+        document["tracks"]["video"][1]["start"] = 3
+        self.project.save_edit_document(document, overwrite=True)
+        self.video.set_project(self.project)
+        self.video.seek_preview(2500)
+        self.assertIsNone(self.video._selected_scene)
+        self.assertEqual(self.video.preview_image.subtitle_label.text(), "Tạm biệt")
+        frame = self.video.preview_image.pixmap().toImage()
+        self.assertEqual(frame.pixelColor(frame.width() // 2, frame.height() // 2), QColor("black"))
+
     def test_open_and_analyze_keep_saved_edits_when_sources_change(self):
         self.create_draft()
         document = self.project.load_edit_document()
         document["tracks"]["video"][0]["end"] = 1.5
         document["tracks"]["video"][1]["start"] = 1.5
         document["tracks"]["subtitles"][0]["text"] = "Đã sửa"
+        document["settings"]["subtitles_enabled"] = True
         self.project.save_edit_document(document, overwrite=True)
         previous = self.project.edit_path.read_bytes()
         newer_voice = self.project.voice_dir / "newer.mp3"
@@ -169,6 +232,27 @@ class EditDocumentUiTests(unittest.TestCase):
             self.video.start_render()
             self.assertEqual(worker.call_args.kwargs["audio_path"], self.project.voice_dir / "voice.mp3")
             self.assertEqual(worker.call_args.kwargs["timeline"][0]["duration"], 1.5)
+            self.assertEqual(worker.call_args.kwargs["subtitles"][0]["text"], "Đã sửa")
+            self.video.worker = None
+
+    def test_export_saves_pending_changes_and_uses_saved_settings(self):
+        self.create_draft()
+        self.video.chk_subtitles.setChecked(True)
+        self.video.combo_fps.setCurrentIndex(self.video.combo_fps.findData(60))
+        replacement = self.root / "export.png"
+        image = QImage(48, 48, QImage.Format.Format_RGB32)
+        image.fill(QColor("green"))
+        self.assertTrue(image.save(str(replacement)))
+        self.assertTrue(self.video._replace_scene_image(replacement, 0))
+        self.assertTrue(self.video._edit_dirty)
+        with patch("app.ui.video_tab.VideoRenderWorker") as worker:
+            self.video.start_render()
+            options = worker.call_args.kwargs
+            self.assertEqual(options["fps"], 60)
+            self.assertEqual(options["timeline"][0]["image"], replacement)
+            self.assertEqual(options["subtitles"][0]["text"], "Xin chào")
+            self.assertEqual(self.project.load_edit_document()["settings"]["fps"], 60)
+            self.assertFalse(self.video._edit_dirty)
             self.video.worker = None
 
     def test_rebuild_requires_confirmation_and_backs_up_previous_draft(self):
@@ -225,6 +309,7 @@ class EditDocumentUiTests(unittest.TestCase):
             image = QImage(80, 45, QImage.Format.Format_RGB32)
             image.fill(QColor(color))
             self.assertTrue(image.save(str(self.project.clean_images_dir / name)))
+        self.video.chk_subtitles.setChecked(True)
         self.create_draft()
         saved = self.project.edit_path.read_bytes()
 
@@ -263,6 +348,7 @@ class EditDocumentUiTests(unittest.TestCase):
         self.assertEqual(self.video._selected_scene, 0)
 
     def test_missing_voice_keeps_scrubbing_available(self):
+        self.video.chk_subtitles.setChecked(True)
         self.create_draft()
         (self.project.voice_dir / "voice.mp3").unlink()
         self.video.set_project(self.project)

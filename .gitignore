@@ -74,6 +74,7 @@ tests/*
 !tests/test_update_check.py
 !tests/test_scene_motion.py
 !tests/test_edit_document.py
+!tests/test_edit_render.py
 !tests/test_watermark_folder_selection.py
 build/
 dist/
