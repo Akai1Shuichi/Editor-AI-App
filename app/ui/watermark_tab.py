@@ -480,10 +480,21 @@ class WatermarkTab(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Chọn thư mục chứa ảnh", str(Path.home()))
         if folder:
             p = Path(folder)
-            valid_exts = {".png", ".jpg", ".jpeg", ".webp"}
-            found = [f for f in p.iterdir() if f.is_file() and f.suffix.lower() in valid_exts and not f.stem.endswith("_cleaned")]
+            valid_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+            images = sorted(
+                (f for f in p.iterdir() if f.is_file() and f.suffix.lower() in valid_exts),
+                key=lambda f: f.name.casefold(),
+            )
+            # Prefer source images when both versions are present, but allow a
+            # project clean folder containing only completed images.
+            raw_images = [f for f in images if not f.stem.lower().endswith("_cleaned")]
+            found = raw_images or images
             if found:
-                self.on_files_selected(found)
+                if self.project and p.resolve() == self.project.clean_images_dir.resolve():
+                    self._hydrate_project_images(self.project)
+                    self.images_updated.emit()
+                else:
+                    self.on_files_selected(found)
             else:
                 QMessageBox.information(self, "Thông báo", "Không tìm thấy file ảnh phù hợp trong thư mục!")
 
@@ -519,14 +530,20 @@ class WatermarkTab(QWidget):
                 item_file = QTableWidgetItem(p.name)
                 item_file.setToolTip(str(p))
                 self.table.setItem(row, 0, item_file)
-                self.table.setItem(row, 1, QTableWidgetItem("Chờ"))
-                self.table.setItem(row, 2, QTableWidgetItem("-"))
+                is_clean = p.stem.lower().endswith("_cleaned")
+                item_status = QTableWidgetItem("✓ Sẵn sàng" if is_clean else "Chờ")
+                if is_clean:
+                    item_status.setForeground(QColor("#34d399"))
+                self.table.setItem(row, 1, item_status)
+                self.table.setItem(row, 2, QTableWidgetItem("Đã gỡ watermark" if is_clean else "-"))
 
         self.status_lbl.setText(f"Đã nạp {len(self.selected_files)} ảnh.")
         self._update_file_count()
         if self.selected_files:
             self.current_preview_row = 0
             self.display_image_preview(self.selected_files[0], self.lbl_preview_orig)
+            if self.selected_files[0].stem.lower().endswith("_cleaned"):
+                self.display_image_preview(self.selected_files[0], self.lbl_preview_clean)
             self.preview_tabs.setCurrentIndex(0)
         self._save_standalone_state()
         self.images_updated.emit()

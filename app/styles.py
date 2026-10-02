@@ -628,6 +628,19 @@ QLabel#video_clip_name {
     font-weight: 700;
 }
 
+QLabel#video_clip_image_status[valid="true"] {
+    color: #34d399;
+}
+
+QLabel#video_clip_image_status[valid="false"] {
+    color: #f87171;
+}
+
+QLineEdit#video_clip_image_path {
+    color: #94a3b8;
+    font-size: 11px;
+}
+
 QTreeWidget#video_asset_tree {
     background-color: #12151d;
     border: 1px solid #2b303d;

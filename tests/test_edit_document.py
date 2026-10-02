@@ -271,6 +271,84 @@ class EditDocumentUiTests(unittest.TestCase):
         self.assertEqual(self.video._selected_scene, 1)
         self.assertEqual(self.video.preview_image.subtitle_label.text(), "Tạm biệt")
 
+    def test_replacing_scene_image_saves_only_its_media_reference(self):
+        self.create_draft()
+        before = deepcopy(self.video.edit_document)
+        image_path = self.project.clean_images_dir / "replacement.png"
+        image = QImage(96, 54, QImage.Format.Format_RGB32)
+        image.fill(QColor("green"))
+        self.assertTrue(image.save(str(image_path)))
+
+        self.video.seek_preview(2500)
+        self.assertTrue(self.video.btn_replace_scene_image.isEnabled())
+        self.assertTrue(self.video._replace_scene_image(image_path))
+        self.assertTrue(self.video._edit_dirty)
+        self.assertEqual(self.project.load_edit_document(), before)
+        self.assertEqual(self.video.current_timeline[1]["image"], image_path)
+        self.assertIn("96 × 54", self.video.lbl_clip_image_status.text())
+        self.assertFalse(self.video._scene_buttons[1].icon().isNull())
+
+        expected = deepcopy(before)
+        expected["tracks"]["video"][1]["media"] = "images/clean/replacement.png"
+        self.assertEqual(self.video.edit_document, expected)
+        self.assertTrue(self.video.save_current_state())
+        self.assertEqual(self.project.load_edit_document(), expected)
+        self.video.set_project(self.project)
+        self.assertEqual(self.video.current_timeline[1]["image"], image_path)
+        self.assertEqual(self.video.edit_document, expected)
+
+    def test_replace_button_repairs_missing_image_with_auto_save(self):
+        other = QImage(32, 32, QImage.Format.Format_RGB32)
+        other.fill(QColor("red"))
+        self.assertTrue(other.save(str(self.project.clean_images_dir / "SC02.png")))
+        self.create_draft()
+        (self.project.clean_images_dir / "SC01.png").unlink()
+        self.video.set_project(self.project)
+        self.assertIn("Thiếu tệp", self.video.lbl_clip_image_status.text())
+        self.assertIn("Cần sửa", self.video.lbl_summary_images.text())
+        replacement = self.root / "outside.png"
+        image = QImage(32, 32, QImage.Format.Format_RGB32)
+        image.fill(QColor("blue"))
+        self.assertTrue(image.save(str(replacement)))
+        self.video.set_auto_save(True)
+        with patch("app.ui.video_tab.QFileDialog.getOpenFileName", return_value=(str(replacement), "")):
+            self.video.btn_replace_scene_image.click()
+        self.assertEqual(self.project.load_edit_document()["tracks"]["video"][0]["media"], str(replacement))
+        self.assertFalse(self.video._edit_dirty)
+        self.assertIn("Sẵn sàng", self.video.lbl_clip_image_status.text())
+        self.assertNotIn("Cần sửa", self.video.lbl_summary_images.text())
+        self.video.set_project(self.project)
+        self.assertEqual(self.video.current_timeline[0]["image"], replacement)
+
+    def test_unreadable_replacement_does_not_change_draft(self):
+        self.create_draft()
+        before = deepcopy(self.video.edit_document)
+        saved = self.project.edit_path.read_bytes()
+        bad = self.root / "broken.png"
+        bad.write_bytes(b"not an image")
+        with patch("app.ui.video_tab.QMessageBox.warning") as warning:
+            self.assertFalse(self.video._replace_scene_image(bad, 0))
+        warning.assert_called_once()
+        self.assertEqual(self.video.edit_document, before)
+        self.assertEqual(self.project.edit_path.read_bytes(), saved)
+        self.assertFalse(self.video._edit_dirty)
+
+    def test_failed_auto_save_keeps_replacement_pending(self):
+        self.create_draft()
+        saved = self.project.edit_path.read_bytes()
+        replacement = self.root / "pending.png"
+        image = QImage(40, 40, QImage.Format.Format_RGB32)
+        image.fill(QColor("yellow"))
+        self.assertTrue(image.save(str(replacement)))
+        self.video.set_auto_save(True)
+        with patch.object(self.project, "save_edit_document", side_effect=OSError("disk full")), \
+             patch("app.ui.video_tab.QMessageBox.warning") as warning:
+            self.assertTrue(self.video._replace_scene_image(replacement, 0))
+        warning.assert_called_once()
+        self.assertTrue(self.video._edit_dirty)
+        self.assertEqual(self.video.current_timeline[0]["image"], replacement)
+        self.assertEqual(self.project.edit_path.read_bytes(), saved)
+
 
 if __name__ == "__main__":
     unittest.main()

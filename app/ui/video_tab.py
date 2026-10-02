@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl, QSize, QSignalBlocker
-from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QColor, QIcon, QPainter, QPen
+from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent, QColor, QIcon, QPainter, QPen, QImageReader
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
@@ -493,13 +493,34 @@ class VideoTab(QWidget):
         inspector_layout.addWidget(self.lbl_clip_name)
         self.lbl_clip_media = QLabel("Ảnh: —")
         self.lbl_clip_media.setWordWrap(True)
+        self.lbl_clip_media.setMinimumWidth(0)
         inspector_layout.addWidget(self.lbl_clip_media)
+        self.lbl_clip_image_status = QLabel("Trạng thái ảnh: —")
+        self.lbl_clip_image_status.setObjectName("video_clip_image_status")
+        self.lbl_clip_image_status.setWordWrap(True)
+        self.lbl_clip_image_status.setMinimumWidth(0)
+        inspector_layout.addWidget(self.lbl_clip_image_status)
+        inspector_layout.addWidget(QLabel("Đường dẫn ảnh"))
+        self.txt_clip_image_path = QLineEdit()
+        self.txt_clip_image_path.setObjectName("video_clip_image_path")
+        self.txt_clip_image_path.setReadOnly(True)
+        self.txt_clip_image_path.setMinimumWidth(0)
+        self.txt_clip_image_path.setPlaceholderText("Chưa có ảnh")
+        inspector_layout.addWidget(self.txt_clip_image_path)
+        self.btn_replace_scene_image = QPushButton("Thay ảnh cảnh này…")
+        self.btn_replace_scene_image.setObjectName("btn_subtle")
+        self.btn_replace_scene_image.setEnabled(False)
+        self.btn_replace_scene_image.clicked.connect(self.choose_scene_image)
+        inspector_layout.addWidget(self.btn_replace_scene_image)
         self.lbl_clip_range = QLabel("Thời gian: —")
+        self.lbl_clip_range.setWordWrap(True)
+        self.lbl_clip_range.setMinimumWidth(0)
         inspector_layout.addWidget(self.lbl_clip_range)
         self.lbl_clip_motion = QLabel("Chuyển động: —")
         inspector_layout.addWidget(self.lbl_clip_motion)
         self.lbl_clip_subtitles = QLabel("Phụ đề: —")
         self.lbl_clip_subtitles.setWordWrap(True)
+        self.lbl_clip_subtitles.setMinimumWidth(0)
         inspector_layout.addWidget(self.lbl_clip_subtitles)
         inspector_layout.addStretch()
         top_splitter.addWidget(inspector)
@@ -663,10 +684,18 @@ class VideoTab(QWidget):
             self._selected_scene = None
             self.table.clearSelection()
             self.preview_image.set_image(Path(location))
+            self.preview_image.set_subtitle("")
             self.lbl_preview_time.setText(f"Asset: {Path(location).name}")
             self.lbl_clip_name.setText("Ảnh trong thư viện")
             self.lbl_clip_media.setText(f"Ảnh: {Path(location).name}")
             self.lbl_clip_media.setToolTip(location)
+            status, valid = self._image_status(Path(location))
+            self.lbl_clip_image_status.setText(f"Trạng thái ảnh: {status}")
+            self.lbl_clip_image_status.setProperty("valid", valid)
+            self.lbl_clip_image_status.style().unpolish(self.lbl_clip_image_status)
+            self.lbl_clip_image_status.style().polish(self.lbl_clip_image_status)
+            self.txt_clip_image_path.setText(location)
+            self.btn_replace_scene_image.setEnabled(False)
             self.lbl_clip_range.setText("Thời gian: Chưa gán cảnh")
             self.lbl_clip_motion.setText("Chuyển động: —")
             self.lbl_clip_subtitles.setText("Phụ đề: —")
@@ -676,6 +705,20 @@ class VideoTab(QWidget):
                 button.style().polish(button)
         else:
             self.lbl_status.setText(f"{item.text(0)} · {location}")
+
+    @staticmethod
+    def _image_status(path: Optional[Path]):
+        if path is None:
+            return "Chưa gán ảnh", False
+        if not path.is_file():
+            return "Thiếu tệp ảnh", False
+        reader = QImageReader(str(path))
+        if not reader.canRead():
+            return "Không đọc được ảnh", False
+        size = reader.size()
+        if size.isValid():
+            return f"Sẵn sàng · {size.width()} × {size.height()} px", True
+        return "Sẵn sàng", True
 
     def _refresh_timeline_tracks(self):
         while self.timeline_lanes.count():
@@ -756,6 +799,13 @@ class VideoTab(QWidget):
         image = clip.get("image")
         self.lbl_clip_media.setText(f"Ảnh: {image.name if image else 'Chưa có ảnh'}")
         self.lbl_clip_media.setToolTip(str(image) if image else "")
+        status, valid = self._image_status(image)
+        self.lbl_clip_image_status.setText(f"Trạng thái ảnh: {status}")
+        self.lbl_clip_image_status.setProperty("valid", valid)
+        self.lbl_clip_image_status.style().unpolish(self.lbl_clip_image_status)
+        self.lbl_clip_image_status.style().polish(self.lbl_clip_image_status)
+        self.txt_clip_image_path.setText(str(image) if image else "")
+        self.btn_replace_scene_image.setEnabled(self.project is not None and self.edit_document is not None)
         self.lbl_clip_range.setText(
             f"Thời gian: {video_creator.format_time(clip['start'])} – "
             f"{video_creator.format_time(clip['end'])} ({clip['duration']:.2f}s)"
@@ -774,6 +824,56 @@ class VideoTab(QWidget):
             button.setProperty("selected", index == row)
             button.style().unpolish(button)
             button.style().polish(button)
+
+    def choose_scene_image(self):
+        row = self._selected_scene
+        if row is None or self.edit_document is None or not self.project:
+            return
+        if self.worker and self.worker.isRunning():
+            return
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+        current = self.current_timeline[row].get("image")
+        source_value = self.txt_image_dir.text().strip().strip('"')
+        source_dir = Path(source_value) if source_value else self.project.path
+        initial = current.parent if current and current.parent.is_dir() else (
+            source_dir if source_dir.is_dir() else self.project.path
+        )
+        selected, _ = QFileDialog.getOpenFileName(
+            self, f"Thay ảnh cho cảnh {self.current_timeline[row]['id']}", str(initial),
+            "Ảnh (*.png *.jpg *.jpeg *.webp *.bmp);;Tất cả tệp (*.*)",
+        )
+        if selected:
+            self._replace_scene_image(Path(selected), row)
+
+    def _replace_scene_image(self, image_path: Path, row: Optional[int] = None) -> bool:
+        if row is None:
+            row = self._selected_scene
+        if (self.edit_document is None or not self.project or row is None
+                or not 0 <= row < len(self.current_timeline)):
+            return False
+        image_path = Path(image_path).resolve()
+        status, valid = self._image_status(image_path)
+        if image_path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".bmp"} or not valid:
+            QMessageBox.warning(self, "Ảnh không hợp lệ", f"Không thể dùng tệp này làm ảnh cảnh: {status}.")
+            return False
+        reference = edit_document.media_reference(self.project.path, image_path)
+        clip = self.edit_document["tracks"]["video"][row]
+        if clip.get("media") == reference:
+            return True
+        clip["media"] = reference
+        self.current_timeline = edit_document.document_timeline(self.project.path, self.edit_document)
+        self._edit_dirty = True
+        self.panel_result.setVisible(False)
+        self._show_timeline(self.current_timeline)
+        if self.auto_save:
+            if self.save_current_state():
+                self.lbl_status.setText(f"Đã thay và tự động lưu ảnh cho cảnh {clip['scene_id']}.")
+            else:
+                self.lbl_status.setText("Ảnh đã thay trong bản dựng nhưng chưa lưu được. Hãy thử Lưu lại.")
+        else:
+            self.lbl_status.setText(f"Đã thay ảnh cho cảnh {clip['scene_id']}. Nhấn Lưu để giữ thay đổi.")
+        return True
 
     def _configure_preview_audio(self):
         if self.edit_document and self.project:
@@ -831,6 +931,14 @@ class VideoTab(QWidget):
             self._selected_scene = None
             self.table.clearSelection()
             self.preview_image.set_image(None)
+            self.lbl_clip_name.setText("Chưa có cảnh tại mốc này")
+            self.lbl_clip_media.setText("Ảnh: —")
+            self.lbl_clip_image_status.setText("Trạng thái ảnh: —")
+            self.txt_clip_image_path.clear()
+            self.lbl_clip_range.setText("Thời gian: —")
+            self.lbl_clip_motion.setText("Chuyển động: —")
+            self.lbl_clip_subtitles.setText("Phụ đề: —")
+            self.btn_replace_scene_image.setEnabled(False)
             for button in self._scene_buttons:
                 button.setProperty("selected", False)
                 button.style().unpolish(button)
@@ -993,6 +1101,9 @@ class VideoTab(QWidget):
         self.lbl_preview_time.setText("00:00.000 / 00:00.000  ·  Chưa chọn cảnh")
         self.lbl_clip_name.setText("Chưa chọn cảnh")
         self.lbl_clip_media.setText("Ảnh: —")
+        self.lbl_clip_image_status.setText("Trạng thái ảnh: —")
+        self.txt_clip_image_path.clear()
+        self.btn_replace_scene_image.setEnabled(False)
         self.lbl_clip_range.setText("Thời gian: —")
         self.lbl_clip_motion.setText("Chuyển động: —")
         self.lbl_clip_subtitles.setText("Phụ đề: —")
@@ -1094,6 +1205,7 @@ class VideoTab(QWidget):
             self.player.stop()
             self.btn_play_pause.setEnabled(False)
             self.preview_image.set_subtitle("")
+            self.btn_replace_scene_image.setEnabled(False)
             self.slider_playhead.setRange(0, 0)
             self._playhead_ms = 0
             self._refresh_timeline_tracks()
@@ -1334,20 +1446,20 @@ class VideoTab(QWidget):
         self._update_playhead(0 if audio_changed else self._playhead_ms)
 
         # Cập nhật thông số tóm tắt
-        missing_count = sum(1 for item in timeline if item["image"] is None or not item["image"].is_file())
+        problem_count = sum(1 for item in timeline if not self._image_status(item["image"])[1])
         total_scenes = len(timeline)
 
         self.lbl_summary_scenes.setText(f"{total_scenes} cảnh")
         self.lbl_summary_duration.setText(f"{video_creator.format_time(self.total_audio_duration)} ({self.total_audio_duration:.2f}s)")
 
-        if missing_count == 0:
+        if problem_count == 0:
             self.lbl_summary_images.setText(f"✓ Đủ {total_scenes}/{total_scenes} ảnh")
             self.lbl_summary_images.setStyleSheet("background-color: #064e3b; border: 1px solid #065f46; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #34d399; font-weight: 600;")
             self.lbl_status.setText(f"Phân tích hoàn tất: {total_scenes} cảnh, đã tìm thấy đầy đủ ảnh tương ứng.")
         else:
-            self.lbl_summary_images.setText(f"⚠ Thiếu {missing_count}/{total_scenes} ảnh")
+            self.lbl_summary_images.setText(f"⚠ Cần sửa {problem_count}/{total_scenes} ảnh")
             self.lbl_summary_images.setStyleSheet("background-color: #450a0a; border: 1px solid #7f1d1d; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #f87171; font-weight: 600;")
-            self.lbl_status.setText(f"Cảnh báo: Có {missing_count} cảnh chưa tìm thấy ảnh trong thư mục.")
+            self.lbl_status.setText(f"Cảnh báo: Có {problem_count} cảnh thiếu ảnh hoặc ảnh không đọc được.")
 
     def populate_table(self, timeline: List[Dict[str, Any]]):
         """Nạp dữ liệu mốc thời gian vào QTableWidget."""
@@ -1373,12 +1485,14 @@ class VideoTab(QWidget):
 
             # File ảnh
             img_p = item["image"]
-            if img_p and img_p.is_file():
+            status, valid = self._image_status(img_p)
+            if valid:
                 img_item = QTableWidgetItem(f"✓ {img_p.name}")
                 img_item.setForeground(QColor("#34d399"))
             else:
                 img_item = QTableWidgetItem(f"✗ {img_p.name}" if img_p else "✗ CHƯA CÓ ẢNH")
                 img_item.setForeground(QColor("#f87171"))
+            img_item.setToolTip(f"{status}\n{img_p if img_p else ''}")
             self.table.setItem(row, 3, img_item)
 
             # Bắt đầu
