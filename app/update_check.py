@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import zipfile
+from pathlib import Path
 from typing import Any
 
 import certifi
@@ -10,6 +12,7 @@ import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from app.version import APP_VERSION, _version_file
+from app.update_install import download_and_stage
 
 
 def is_newer_version(latest: str, current: str) -> bool:
@@ -30,7 +33,7 @@ def is_newer_version(latest: str, current: str) -> bool:
     return parts(latest) > parts(current)
 
 
-def parse_update_response(response: dict[str, Any], *, current_version: str) -> dict[str, str] | None:
+def parse_update_response(response: dict[str, Any], *, current_version: str) -> dict[str, Any] | None:
     if not response.get("success"):
         raise ValueError(str(response.get("message") or "Máy chủ không thể kiểm tra bản cập nhật."))
     data = response.get("data")
@@ -42,6 +45,7 @@ def parse_update_response(response: dict[str, Any], *, current_version: str) -> 
     return {
         "version": version,
         "notes": str(data.get("changeLog") or data.get("message") or "Không có nhật ký thay đổi."),
+        "download_links": data.get("downloadLink") if isinstance(data.get("downloadLink"), list) else [],
     }
 
 
@@ -70,3 +74,21 @@ class UpdateCheckerThread(QThread):
                 self.update_available.emit(update)
         except (OSError, KeyError, TypeError, ValueError, requests.RequestException) as error:
             self.check_failed.emit(str(error))
+
+
+class UpdateDownloadThread(QThread):
+    progress = pyqtSignal(int)
+    staged = pyqtSignal(str)
+    failed = pyqtSignal(str)
+
+    def __init__(self, url: str, target: Path, parent=None):
+        super().__init__(parent)
+        self.url = url
+        self.target = target
+
+    def run(self) -> None:
+        try:
+            staged = download_and_stage(self.url, self.target, self.progress.emit)
+            self.staged.emit(str(staged))
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile, requests.RequestException) as error:
+            self.failed.emit(str(error))

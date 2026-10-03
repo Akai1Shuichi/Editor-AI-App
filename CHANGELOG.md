@@ -1,6 +1,13 @@
 # Changelog
 
+### Editor Video AI v1.4 - 3/10/2026
+
+- Thêm workspace dựng video với thư viện nguồn, xem trước ảnh và voice, thuộc tính cảnh, timeline và danh sách cảnh.
+- Thêm tính năng phụ đề
+- Bổ sung tính năng tải bản cập nhật mới tự thay version cũ , không cần phải giải nén .
+
 ## Editor Video AI v1.3 — 30/09/2026
+
 - Fix lỗi xuất video do phiên bản ffmpeg không tương thích cho một số máy tính.
 
 ## Editor Video AI v1.2 — 29/09/2026

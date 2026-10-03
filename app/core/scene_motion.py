@@ -99,10 +99,11 @@ def build_motion_filter(timeline: List[Dict[str, Any]], width: int, height: int,
         raise ValueError("fps must be positive")
     expressions = []
     for item in timeline:
-        start_frame = round(item["start"] * fps)
+        start_frame = round(item.get("motion_start", item["start"]) * fps)
         end_frame = round(item["end"] * fps)
         frame = f"on-{start_frame + 1}"
-        progress = f"min(1,max(0,({frame})/{max(1, end_frame - start_frame - 1)}))"
+        motion_end_frame = round(item.get("motion_end", item["end"]) * fps)
+        progress = f"min(1,max(0,({frame})/{max(1, motion_end_frame - start_frame - 1)}))"
         expressions.append((end_frame, _scene_expressions(
             normalize_motion(item.get("motion")), progress, frame, width, height, fps)))
 

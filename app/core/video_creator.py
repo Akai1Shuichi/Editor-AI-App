@@ -18,6 +18,7 @@ import json
 import shutil
 import argparse
 import subprocess
+import math
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any, Callable
@@ -44,6 +45,55 @@ console = Console()
 def escape_ffconcat_path(path: str) -> str:
     """Escape a path for a single-quoted FFmpeg concat-demuxer entry."""
     return path.replace("'", r"'\''")
+
+
+def _ass_time(frame: int, fps: int) -> str:
+    # ASS stores centiseconds. At supported frame rates each frame is at least
+    # 16 ms apart, so rounding down preserves the selected output frame.
+    centiseconds = math.floor(frame * 100 / fps + 1e-8)
+    hours, remainder = divmod(centiseconds, 360000)
+    minutes, remainder = divmod(remainder, 6000)
+    seconds, cs = divmod(remainder, 100)
+    return f"{hours}:{minutes:02d}:{seconds:02d}.{cs:02d}"
+
+
+def _ass_text(value: str) -> str:
+    # Escape ASS control syntax from user-authored subtitle text.
+    return (value.replace("\\", r"\\").replace("{", r"\{")
+            .replace("}", r"\}").replace("\r\n", "\n")
+            .replace("\r", "\n").replace("\n", r"\N"))
+
+
+def build_ass_subtitles(subtitles: List[Dict[str, Any]], duration: float,
+                        width: int, height: int, fps: int) -> str:
+    """Burn the exact text visible in preview, including overlapping cues."""
+    frame_count = math.ceil(duration * fps)
+    cues = []
+    boundaries = {0, frame_count}
+    for cue in subtitles:
+        if not cue["text"]:
+            continue
+        first = min(frame_count, math.ceil(cue["start"] * fps))
+        last = min(frame_count, math.ceil(cue["end"] * fps))
+        if first < last:
+            cues.append((first, last, cue["text"]))
+            boundaries.update((first, last))
+    font_size = max(18, round(height * 0.039))
+    margin = max(12, round(height * 0.035))
+    lines = [
+        "[Script Info]", "ScriptType: v4.00+", f"PlayResX: {width}",
+        f"PlayResY: {height}", "WrapStyle: 0", "ScaledBorderAndShadow: yes", "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        f"Style: Preview,Arial,{font_size},&H00FFFFFF,&H00FFFFFF,&H0005080F,&H4005080F,-1,0,0,0,100,100,0,0,3,2,0,2,{margin},{margin},{margin},1",
+        "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ]
+    points = sorted(boundaries)
+    for first, last in zip(points, points[1:]):
+        content = "\n".join(text for start, end, text in cues if start <= first < end)
+        if content:
+            lines.append(f"Dialogue: 0,{_ass_time(first, fps)},{_ass_time(last, fps)},Preview,,0,0,0,,{_ass_text(content)}")
+    return "\n".join(lines) + "\n"
 
 
 def get_ffmpeg_path() -> str:
@@ -402,7 +452,8 @@ def render_video(
     aspect_ratio: str = "16:9",
     fps: int = 30,
     progress_callback: Optional[Callable[[int, str], None]] = None,
-    is_cancelled: Optional[Callable[[], bool]] = None
+    is_cancelled: Optional[Callable[[], bool]] = None,
+    subtitles: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Sử dụng FFmpeg tạo video từ chuỗi ảnh và audio.
@@ -414,6 +465,7 @@ def render_video(
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+    output_path = output_path.resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if aspect_ratio == "9:16":
@@ -425,14 +477,53 @@ def render_video(
 
     temp_concat_file = output_path.parent / f"temp_concat_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.txt"
     temp_filter_file = temp_concat_file.with_suffix(".filter")
+    temp_ass_file = temp_concat_file.with_suffix(".ass")
+    temp_assets_dir = temp_concat_file.with_suffix(".assets")
     concat_lines = ["ffconcat version 1.0"]
 
+    def cleanup_temp_files():
+        for temp_file in (temp_concat_file, temp_filter_file, temp_ass_file):
+            if temp_file.exists():
+                temp_file.unlink()
+        if temp_assets_dir.exists():
+            shutil.rmtree(temp_assets_dir)
+
     valid_items = [item for item in timeline if item.get("image") is not None]
-    if not valid_items:
+    if not valid_items and subtitles is None:
         return {"success": False, "error": "Không tìm thấy bất kỳ file ảnh hợp lệ nào trong timeline!"}
 
-    for item in timeline:
-        img = item.get("image")
+    prepared_images = []
+    try:
+        if subtitles is not None:
+            from PIL import Image, ImageOps
+
+            temp_assets_dir.mkdir()
+            cache = {}
+            for item in timeline:
+                if is_cancelled and is_cancelled():
+                    cleanup_temp_files()
+                    return {"success": False, "error": "Người dùng đã hủy tác vụ ghép video."}
+                source = item.get("image")
+                key = str(Path(source).resolve()) if source else ""
+                if key not in cache:
+                    target = temp_assets_dir / f"{len(cache):05d}.png"
+                    try:
+                        if source is None:
+                            raise ValueError("Missing scene image")
+                        with Image.open(source) as image:
+                            image = ImageOps.fit(image.convert("RGB"), (width, height),
+                                                 method=Image.Resampling.LANCZOS)
+                            image.save(target)
+                    except (OSError, ValueError, TypeError):
+                        Image.new("RGB", (width, height), "black").save(target)
+                    cache[key] = target
+                prepared_images.append(cache[key])
+    except Exception as exc:
+        cleanup_temp_files()
+        return {"success": False, "error": f"Không thể chuẩn bị ảnh: {exc}"}
+
+    for index, item in enumerate(timeline):
+        img = prepared_images[index] if subtitles is not None else item.get("image")
         if not img:
             img = valid_items[0]["image"]
         img_p = escape_ffconcat_path(Path(img).resolve().as_posix())
@@ -440,19 +531,25 @@ def render_video(
         concat_lines.append(f"file '{img_p}'")
         concat_lines.append(f"duration {dur}")
 
-    last_img = timeline[-1].get("image") or valid_items[-1]["image"]
+    last_img = prepared_images[-1] if subtitles is not None else (
+        timeline[-1].get("image") or valid_items[-1]["image"])
     last_img_p = escape_ffconcat_path(Path(last_img).resolve().as_posix())
     concat_lines.append(f"file '{last_img_p}'")
 
-    temp_concat_file.write_text("\n".join(concat_lines) + "\n", encoding="utf-8")
+    try:
+        temp_concat_file.write_text("\n".join(concat_lines) + "\n", encoding="utf-8")
 
-    vf_arg = build_motion_filter(timeline, width, height, fps)
-    temp_filter_file.write_text(vf_arg, encoding="utf-8")
-
-    def cleanup_temp_files():
-        for temp_file in (temp_concat_file, temp_filter_file):
-            if temp_file.exists():
-                temp_file.unlink()
+        vf_arg = build_motion_filter(timeline, width, height, fps)
+        if subtitles:
+            temp_ass_file.write_text(
+                build_ass_subtitles(subtitles, total_audio_duration, width, height, fps),
+                encoding="utf-8-sig",
+            )
+            vf_arg += f",ass=filename='{temp_ass_file.name}'"
+        temp_filter_file.write_text(vf_arg, encoding="utf-8")
+    except Exception as exc:
+        cleanup_temp_files()
+        return {"success": False, "error": f"Không thể chuẩn bị bộ lọc video: {exc}"}
 
     cmd = [
         ffmpeg_exe, "-y",
@@ -471,6 +568,10 @@ def render_video(
         "-pix_fmt", "yuv420p",
         str(output_path.resolve())
     ]
+    if subtitles is not None:
+        cmd[cmd.index("-c:a"):cmd.index("-c:a")] = [
+            "-af", f"apad,atrim=0:{total_audio_duration:.6f}",
+        ]
 
     if progress_callback:
         progress_callback(5, "Đang khởi tạo trình mã hóa FFmpeg...")
@@ -483,8 +584,15 @@ def render_video(
             text=True,
             encoding="utf-8",
             errors="ignore",
-            bufsize=1
+            bufsize=1,
+            cwd=str(output_path.parent),
         )
+
+        def close_pipes():
+            if proc.stdout:
+                proc.stdout.close()
+            if proc.stderr:
+                proc.stderr.close()
 
         stderr_logs = []
         time_pattern = re.compile(r"time=(\d+):(\d+):(\d+\.\d+)")
@@ -496,6 +604,8 @@ def render_video(
                     proc.wait(timeout=3)
                 except subprocess.TimeoutExpired:
                     proc.kill()
+                    proc.wait()
+                close_pipes()
                 cleanup_temp_files()
                 if output_path.exists():
                     output_path.unlink()
@@ -514,6 +624,7 @@ def render_video(
                     progress_callback(pct, f"Đang render: {format_time(cur_sec)} / {format_time(total_audio_duration)} ({pct}%)")
 
         retcode = proc.wait()
+        close_pipes()
 
         cleanup_temp_files()
 

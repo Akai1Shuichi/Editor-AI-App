@@ -10,7 +10,7 @@
      - **🧹 Bước 1: Gỡ Watermark Ảnh**: Tự động loại bỏ Watermark Google Gemini / Imagen từ ảnh đơn hoặc hàng loạt (Batch). Xem trước Trước/Sau (Before & After), tự động lưu ảnh sạch vào thư mục `<du_an>/images/clean/`.
      - **🎙️ Bước 2: Tạo Giọng TTS**: Chuyển đổi văn bản thành giọng nói ElevenLabs/MiniMax/CapCut chất lượng cao qua Vibi API. Hỗ trợ tra cứu Thư viện Voice, tự động chia nhỏ văn bản dài, xuất phụ đề SRT và tự động lưu vào `<du_an>/voice/`. Nút "Kịch Bản Cảnh" tự động chuyển dữ liệu sang Bước 3.
      - **📝 Bước 3: Kịch Bản Phân Cảnh**: Nhập trực tiếp nội dung JSON hoặc chọn một file JSON có sẵn. Dự án không tự gán kịch bản mặc định.
-     - **🎬 Bước 4: Ghép Video Thành Phẩm (Video Composer)**: Ghép video tự động đồng bộ ảnh cảnh sạch, phụ đề SRT, âm thanh voice và kịch bản phân đoạn JSON. Tự động tính toán mốc thời gian hiển thị từng ảnh, xuất video chuẩn MP4 H.264/AAC với 3 tỉ lệ khung hình vào `<du_an>/output/`.
+     - **🎬 Bước 4: Workspace dựng video**: Thư viện asset, preview ảnh cảnh, thuộc tính clip và timeline giúp xem bản dựng tạo từ ảnh, voice, SRT và kịch bản. Bản dựng được lưu trong `edit.json`; có thể tạo lại timeline từ nguồn sau khi xác nhận. Tính năng xuất MP4 H.264/AAC với 3 tỉ lệ khung hình tiếp tục dùng luồng hiện có và lưu vào `<du_an>/output/`.
    - **Quản Lý Danh Sách Dự Án (Project List)**: Xem danh sách tất cả dự án, số lượng ảnh sạch, voice, video đã xuất và kích hoạt chuyển đổi nhanh.
 2. **⚙️ Cài Đặt & Quản Lý Tài Khoản Vibi**: Nhập và lưu API Key an toàn vào `.env`, kiểm tra số dư Credits và thông tin tài khoản theo thời gian thực.
 
@@ -78,6 +78,8 @@ Mỗi dự án được quản lý độc lập tại `projects/<ten_du_an>/`:
 projects/<ten_du_an>/
 ├── project.json          # Cấu hình dự án (tên, tỉ lệ khung hình, fps, ngày tạo)
 ├── scenes.json           # Được tạo khi người dùng nhập kịch bản dạng text
+├── edit.json             # Bản dựng Bước 4: track ảnh/voice/phụ đề và cấu hình xuất
+├── edit.json.bak         # Bản dựng trước lần tạo lại từ nguồn gần nhất (nếu có)
 ├── images/               # Thư mục ảnh gốc
 │   └── clean/            # Thư mục ảnh sạch đã gỡ watermark (được ưu tiên ghép vào video)
 ├── voice/                # File âm thanh (.mp3, .wav) và phụ đề (.srt)

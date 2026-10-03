@@ -35,7 +35,7 @@ def main():
 
     window = MainWindow()
     window.setWindowIcon(app.windowIcon())
-    window.show()
+    window.showMaximized()
 
     sys.exit(app.exec())
 
