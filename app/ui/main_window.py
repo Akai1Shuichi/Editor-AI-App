@@ -1,8 +1,8 @@
-from html import escape
 from pathlib import Path
+import sys
 
-from PyQt6.QtCore import Qt, QTimer, QUrl
-from PyQt6.QtGui import QDesktopServices, QPixmap
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -18,18 +18,19 @@ from PyQt6.QtWidgets import (
 
 from app import config
 from app.core.standalone_state import StandaloneStateStore
-from app.update_check import UpdateCheckerThread
+from app.update_check import UpdateCheckerThread, UpdateDownloadThread
+from app.update_install import launch_update_helper, select_download_url
 from app.ui.pricing_tab import PricingTab
 from app.ui.project_workspace import ProjectWorkspace
 from app.ui.settings_tab import SettingsTab
 from app.ui.tts_tab import TTSTab
+from app.ui.update_dialog import UpdateDialog
 from app.ui.watermark_tab import WatermarkTab
 from app.ui.video_watermark_tab import VideoWatermarkTab
 from app.version import APP_VERSION
 
 
 ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
-LATEST_RELEASE_URL = "https://github.com/Akai1Shuichi/Editor-AI-App/releases/latest"
 
 
 class MainWindow(QMainWindow):
@@ -42,6 +43,10 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(900, 640)
 
         self.nav_buttons: list[QPushButton] = []
+        self._staged_update: Path | None = None
+        self._download_thread: UpdateDownloadThread | None = None
+        self._update_dialog: UpdateDialog | None = None
+        self._download_error: str | None = None
         self.standalone_state = StandaloneStateStore()
         self.init_ui()
         self.update_api_status_badge()
@@ -49,6 +54,8 @@ class MainWindow(QMainWindow):
         self._update_timer.setSingleShot(True)
         self._update_timer.timeout.connect(self._check_update_automatically)
         self._update_timer.start(1500)
+        if getattr(sys, "frozen", False):
+            QTimer.singleShot(0, self._show_update_error)
 
     def init_ui(self):
         central_widget = QWidget()
@@ -173,6 +180,17 @@ class MainWindow(QMainWindow):
             self.project_workspace.show_project_list()
 
     def closeEvent(self, event) -> None:
+        if self._download_thread and self._download_thread.isRunning():
+            QMessageBox.information(self, "Đang tải cập nhật", "Vui lòng đợi tải xong trước khi đóng ứng dụng.")
+            event.ignore()
+            return
+        if self._staged_update:
+            try:
+                launch_update_helper(Path(sys.executable), self._staged_update)
+            except (OSError, RuntimeError, ValueError) as error:
+                QMessageBox.warning(self, "Không thể cài cập nhật", str(error))
+                event.ignore()
+                return
         self.tts_tab.flush_standalone_state()
         super().closeEvent(event)
 
@@ -199,9 +217,16 @@ class MainWindow(QMainWindow):
         return update_bar
 
     def _check_update_automatically(self) -> None:
-        self._start_update_check(manual=False)
+        if getattr(sys, "frozen", False):
+            self._start_update_check(manual=False)
 
     def _check_update_manually(self) -> None:
+        if not getattr(sys, "frozen", False):
+            QMessageBox.information(
+                self, "Cập nhật ứng dụng",
+                "Tự cập nhật chỉ hỗ trợ bản đóng gói. Hãy chạy EditorVideoApp để kiểm tra và cài bản mới.",
+            )
+            return
         self._start_update_check(manual=True)
 
     def _start_update_check(self, *, manual: bool) -> None:
@@ -218,19 +243,66 @@ class MainWindow(QMainWindow):
 
     def _on_update_available(self, update_info: dict) -> None:
         self.update_status_label.setText(f"↑ Có bản mới v{update_info['version']}")
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle("Có bản cập nhật mới")
-        dialog.setTextFormat(Qt.TextFormat.RichText)
-        dialog.setText(
-            f"<p>Đã có phiên bản {escape(str(update_info['version']))}.</p>"
-            f"{update_info['notes']}"
-            f"<p>Link tải: {escape(LATEST_RELEASE_URL)}</p>"
+        url = select_download_url(
+            update_info.get("download_links") or [], sys.platform,
         )
-        download_button = dialog.addButton("Tải bản cập nhật", QMessageBox.ButtonRole.AcceptRole)
-        dialog.addButton("Để sau", QMessageBox.ButtonRole.RejectRole)
+        dialog = UpdateDialog(str(update_info["version"]), update_info["notes"], url, self)
+        self._update_dialog = dialog
+        if url:
+            dialog.download_requested.connect(lambda: self._start_update_download(url, str(update_info["version"])))
+            dialog.restart_requested.connect(self.close)
         dialog.exec()
-        if dialog.clickedButton() is download_button:
-            QDesktopServices.openUrl(QUrl(LATEST_RELEASE_URL))
+        self._update_dialog = None
+
+    def _start_update_download(self, url: str, version: str) -> None:
+        if self._download_thread and self._download_thread.isRunning():
+            return
+        self._download_error = None
+        self.update_button.setEnabled(False)
+        self.update_status_label.setText(f"Đang tải v{version}…")
+        if self._update_dialog:
+            self._update_dialog.begin_download()
+        self._download_thread = UpdateDownloadThread(url, Path(sys.executable), self)
+        self._download_thread.progress.connect(lambda percent: self._on_update_download_progress(percent, version))
+        self._download_thread.staged.connect(lambda path: self._on_update_staged(path, version))
+        self._download_thread.failed.connect(self._on_update_download_failed)
+        self._download_thread.finished.connect(lambda: self._on_update_download_finished(version))
+        self._download_thread.start()
+
+    def _on_update_download_progress(self, percent: int, version: str) -> None:
+        if self._update_dialog:
+            self._update_dialog.set_progress(percent)
+        self.update_status_label.setText(f"Đang tải v{version}: {percent}%")
+
+    def _on_update_staged(self, path: str, version: str) -> None:
+        self._staged_update = Path(path)
+        self.update_status_label.setText(f"Đã tải v{version} • Đóng app để cài")
+
+    def _on_update_download_failed(self, message: str) -> None:
+        self._download_error = message
+        self.update_status_label.setText("Tải bản cập nhật thất bại")
+
+    def _on_update_download_finished(self, version: str) -> None:
+        self.update_button.setEnabled(True)
+        if self._download_error:
+            if self._update_dialog:
+                self._update_dialog.show_error(self._download_error)
+            else:
+                QMessageBox.warning(self, "Không thể tải cập nhật", self._download_error)
+            return
+        if not self._staged_update:
+            return
+        if self._update_dialog:
+            self._update_dialog.show_ready(version)
+
+    def _show_update_error(self) -> None:
+        marker = Path(sys.executable).parent / ".editor-update-error.txt"
+        try:
+            message = marker.read_text(encoding="utf-8")
+            marker.unlink()
+        except OSError:
+            return
+        QMessageBox.warning(self, "Cập nhật chưa hoàn tất", message)
 
     def _on_no_update(self, manual: bool) -> None:
         self.update_status_label.setText(f"✓ Đã cập nhật (v{APP_VERSION})")

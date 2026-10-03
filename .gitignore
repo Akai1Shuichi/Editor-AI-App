@@ -72,6 +72,7 @@ tests/*
 !tests/test_restored_features.py
 !tests/test_scene_video_handoff.py
 !tests/test_update_check.py
+!tests/test_update_install.py
 !tests/test_scene_motion.py
 !tests/test_edit_document.py
 !tests/test_edit_render.py

@@ -15,9 +15,14 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+if __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--apply-update":
+    from app.update_install import run_update_helper
+
+    sys.exit(run_update_helper(Path(sys.argv[2]), Path(sys.argv[3]), int(sys.argv[4])))
+
 # Ưu tiên sử dụng python trong virtualenv nếu đang chạy từ python ngoài
 venv_python = (BASE_DIR / ".venv" / "Scripts" / "python.exe") if sys.platform == "win32" else (BASE_DIR / ".venv" / "bin" / "python")
-if venv_python.exists() and Path(sys.executable).resolve() != venv_python.resolve():
+if not getattr(sys, "frozen", False) and venv_python.exists() and Path(sys.executable).resolve() != venv_python.resolve():
     import subprocess
     sys.exit(subprocess.call([str(venv_python)] + sys.argv))
 
